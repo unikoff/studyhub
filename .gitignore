@@ -1,0 +1,6 @@
+STUDYHUB_LEARNINGS.md
+review.md
+
+.venv/
+__pycache__/
+*.pyc
