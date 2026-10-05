@@ -7,6 +7,17 @@ def create_task(task_id, title, priority):
     }
 
 
+def normalize_title(title):
+    return title.strip()
+
+
+def calculate_study_minutes(durations):
+    total = 0
+    for duration in durations:
+        total = total + duration
+    return total
+
+
 def format_task(task):
     if task["is_done"]:
         state = "выполнена"
@@ -33,26 +44,25 @@ while True:
     command = raw_command.strip().lower()
 
     if command == "calc":
-        title = input("Название сессии: ").strip()
+        title = normalize_title(input("Название сессии: "))
         while title == "":
             print("Название не должно быть пустым")
-            title = input("Название сессии: ").strip()
+            title = normalize_title(input("Название сессии: "))
 
         raw_lessons = input("Количество занятий: ")
         lesson_count = int(raw_lessons)
         count_is_nonnegative = lesson_count >= 0
 
         if count_is_nonnegative:
-            study_minutes = 0
             durations = []
             for number in range(lesson_count):
                 print(f"Занятие {number + 1}: {title}")
                 duration_text = input(f"Длительность занятия {number + 1} в минутах: ")
                 duration_minutes = int(duration_text)
                 durations.append(duration_minutes)
-                study_minutes = study_minutes + duration_minutes
 
             print("Длительности:", durations)
+            study_minutes = calculate_study_minutes(durations)
             break_minutes = 10
             total_minutes = study_minutes + break_minutes
             full_hours = total_minutes // 60
