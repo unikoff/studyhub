@@ -23,5 +23,9 @@ minutes_left = total_minutes % 60
 
 print(f"Сессия: {title}; всего {total_minutes} минут ({full_hours} ч {minutes_left} мин)")
 
+has_title = bool(title)
+count_is_nonnegative = lesson_count >= 0
+print("Есть название:", has_title)
+print("Количество неотрицательное:", count_is_nonnegative)
 # Экран StudyHub проверен перед записью
 # Версия StudyHub проверена перед публикацией
