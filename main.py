@@ -27,12 +27,15 @@ while True:
 
         if count_is_nonnegative:
             study_minutes = 0
+            durations = []
             for number in range(lesson_count):
                 print(f"Занятие {number + 1}: {title}")
                 duration_text = input(f"Длительность занятия {number + 1} в минутах: ")
                 duration_minutes = int(duration_text)
+                durations.append(duration_minutes)
                 study_minutes = study_minutes + duration_minutes
 
+            print("Длительности:", durations)
             break_minutes = 10
             total_minutes = study_minutes + break_minutes
             full_hours = total_minutes // 60
