@@ -11,6 +11,21 @@ def normalize_title(title):
     return title.strip()
 
 
+def get_next_id(tasks):
+    max_id = 0
+    for task in tasks:
+        if task["id"] > max_id:
+            max_id = task["id"]
+    return max_id + 1
+
+
+def add_task(tasks, title, priority):
+    task_id = get_next_id(tasks)
+    new_task = create_task(task_id, title, priority)
+    tasks.append(new_task)
+    return new_task
+
+
 def read_title():
     while True:
         title = normalize_title(input("Название задачи: "))
@@ -61,9 +76,17 @@ def format_task(task):
     return f"[{task['id']}] {task['title']} | приоритет: {task['priority']} | {state}"
 
 
+def handle_add(tasks):
+    title = read_title()
+    priority = read_priority()
+    task = add_task(tasks, title, priority)
+    print(format_task(task))
+
+
 def show_menu():
     print()
     print("StudyHub Planner")
+    print("add - добавить задачу")
     print("list - показать задачи")
     print("exit - завершить работу")
 
@@ -80,13 +103,16 @@ def run():
     while True:
         show_menu()
         command = input("Команда: ").strip().lower()
-        if command not in ("list", "exit"):
+        if command not in ("add", "list", "exit"):
             print("Неизвестная команда")
             continue
         if command == "exit":
             print("Работу завершили")
             break
-        show_tasks(tasks)
+        if command == "add":
+            handle_add(tasks)
+        else:
+            show_tasks(tasks)
 
 
 run()
