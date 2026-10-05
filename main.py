@@ -41,6 +41,25 @@ def mark_task_done(tasks, task_id):
     return True
 
 
+def build_statistics(tasks):
+    total = 0
+    completed = 0
+    for task in tasks:
+        total += 1
+        if task["is_done"]:
+            completed += 1
+    left = total - completed
+    return {"total": total, "completed": completed, "left": left}
+
+
+def completion_percent(statistics):
+    total = statistics["total"]
+    if total == 0:
+        return 0.0
+    completed = statistics["completed"]
+    return round(completed / total * 100, 1)
+
+
 def search_tasks(tasks, query):
     normalized_query = query.strip().lower()
     matches = []
@@ -148,6 +167,7 @@ def show_menu():
     print("find - найти задачу по id")
     print("done - завершить задачу")
     print("search - искать по названию")
+    print("stats - показать статистику")
     print("exit - завершить работу")
 
 
@@ -164,7 +184,7 @@ def run():
     while True:
         show_menu()
         command = input("Команда: ").strip().lower()
-        if command not in ("add", "list", "find", "done", "search", "exit"):
+        if command not in ("add", "list", "find", "done", "search", "stats", "exit"):
             print("Неизвестная команда")
             continue
         if command == "exit":
@@ -178,6 +198,13 @@ def run():
             handle_done(tasks)
         elif command == "search":
             handle_search(tasks)
+        elif command == "stats":
+            statistics = build_statistics(tasks)
+            percent = completion_percent(statistics)
+            print(f"Всего: {statistics['total']}")
+            print(f"Выполнено: {statistics['completed']}")
+            print(f"Осталось: {statistics['left']}")
+            print(f"Процент выполнения: {percent}%")
         else:
             show_tasks(tasks)
 
