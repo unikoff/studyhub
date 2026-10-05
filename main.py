@@ -21,6 +21,9 @@ if command == "calc":
     count_is_nonnegative = lesson_count >= 0
 
     if has_title and count_is_nonnegative:
+        for number in range(lesson_count):
+            print(f"Занятие {number + 1}: {title}")
+
         minutes_per_lesson = 40
         break_minutes = 10
         study_minutes = lesson_count * minutes_per_lesson
