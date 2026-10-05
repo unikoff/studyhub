@@ -11,21 +11,28 @@ print(version)
 print(progress_percent)
 print(is_ready)
 
-minutes_per_lesson = 40
-break_minutes = 10
-title = input("Название сессии: ").strip()
-raw_lessons = input("Количество занятий: ")
-lesson_count = int(raw_lessons)
-study_minutes = lesson_count * minutes_per_lesson
-total_minutes = study_minutes + break_minutes
-full_hours = total_minutes // 60
-minutes_left = total_minutes % 60
+command = input("Команда calc или exit: ").strip().lower()
 
-print(f"Сессия: {title}; всего {total_minutes} минут ({full_hours} ч {minutes_left} мин)")
+if command == "calc":
+    title = input("Название сессии: ").strip()
+    raw_lessons = input("Количество занятий: ")
+    lesson_count = int(raw_lessons)
+    has_title = bool(title)
+    count_is_nonnegative = lesson_count >= 0
 
-has_title = bool(title)
-count_is_nonnegative = lesson_count >= 0
-print("Есть название:", has_title)
-print("Количество неотрицательное:", count_is_nonnegative)
+    if has_title and count_is_nonnegative:
+        minutes_per_lesson = 40
+        break_minutes = 10
+        study_minutes = lesson_count * minutes_per_lesson
+        total_minutes = study_minutes + break_minutes
+        full_hours = total_minutes // 60
+        minutes_left = total_minutes % 60
+        print(f"Сессия: {title}; всего {total_minutes} минут ({full_hours} ч {minutes_left} мин)")
+    else:
+        print("Расчёт отменён: название или количество не подходят")
+elif command == "exit":
+    print("Работу завершили")
+else:
+    print(f"Неизвестная команда: {command}")
 # Экран StudyHub проверен перед записью
 # Версия StudyHub проверена перед публикацией
