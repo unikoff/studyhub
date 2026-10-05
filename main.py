@@ -1,3 +1,12 @@
+def create_task(task_id, title, priority):
+    return {
+        "id": task_id,
+        "title": title,
+        "priority": priority,
+        "is_done": False,
+    }
+
+
 def format_task(task):
     if task["is_done"]:
         state = "выполнена"
