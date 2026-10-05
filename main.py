@@ -94,8 +94,9 @@ def show_menu():
 def show_tasks(tasks):
     if len(tasks) == 0:
         print("Список задач пока пуст.")
-    else:
-        print(f"Задач в списке: {len(tasks)}")
+        return
+    for task in tasks:
+        print(format_task(task))
 
 
 def run():
