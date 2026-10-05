@@ -26,6 +26,21 @@ def add_task(tasks, title, priority):
     return new_task
 
 
+def find_task(tasks, task_id):
+    for task in tasks:
+        if task["id"] == task_id:
+            return task
+    return None
+
+
+def mark_task_done(tasks, task_id):
+    task = find_task(tasks, task_id)
+    if task is None:
+        return False
+    task["is_done"] = True
+    return True
+
+
 def read_title():
     while True:
         title = normalize_title(input("Название задачи: "))
@@ -83,11 +98,31 @@ def handle_add(tasks):
     print(format_task(task))
 
 
+def handle_find(tasks):
+    task_id = read_task_id()
+    task = find_task(tasks, task_id)
+    if task is None:
+        print("Задача не найдена")
+    else:
+        print(format_task(task))
+
+
+def handle_done(tasks):
+    task_id = read_task_id()
+    is_found = mark_task_done(tasks, task_id)
+    if is_found:
+        print("Задача выполнена")
+    else:
+        print("Задача не найдена")
+
+
 def show_menu():
     print()
     print("StudyHub Planner")
     print("add - добавить задачу")
     print("list - показать задачи")
+    print("find - найти задачу по id")
+    print("done - завершить задачу")
     print("exit - завершить работу")
 
 
@@ -104,7 +139,7 @@ def run():
     while True:
         show_menu()
         command = input("Команда: ").strip().lower()
-        if command not in ("add", "list", "exit"):
+        if command not in ("add", "list", "find", "done", "exit"):
             print("Неизвестная команда")
             continue
         if command == "exit":
@@ -112,6 +147,10 @@ def run():
             break
         if command == "add":
             handle_add(tasks)
+        elif command == "find":
+            handle_find(tasks)
+        elif command == "done":
+            handle_done(tasks)
         else:
             show_tasks(tasks)
 
