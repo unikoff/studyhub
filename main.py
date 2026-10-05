@@ -11,6 +11,41 @@ def normalize_title(title):
     return title.strip()
 
 
+def read_title():
+    while True:
+        title = normalize_title(input("Название задачи: "))
+        if title == "":
+            print("Название не может быть пустым")
+            continue
+        return title
+
+
+def read_priority():
+    while True:
+        raw_value = input("Приоритет от 1 до 5: ")
+        try:
+            priority = int(raw_value)
+        except ValueError:
+            print("Введите целое число")
+            continue
+        if 1 <= priority <= 5:
+            return priority
+        print("Приоритет должен быть от 1 до 5")
+
+
+def read_task_id():
+    while True:
+        raw_value = input("Номер задачи: ")
+        try:
+            task_id = int(raw_value)
+        except ValueError:
+            print("Введите целое число")
+            continue
+        if task_id > 0:
+            return task_id
+        print("Номер должен быть положительным")
+
+
 def calculate_study_minutes(durations):
     total = 0
     for duration in durations:
