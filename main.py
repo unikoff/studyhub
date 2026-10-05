@@ -1,3 +1,11 @@
+def format_task(task):
+    if task["is_done"]:
+        state = "выполнена"
+    else:
+        state = "открыта"
+    return f"[{task['id']}] {task['title']} | приоритет: {task['priority']} | {state}"
+
+
 project_name = "StudyHub 2"
 version = 1
 progress_percent = 0.0
