@@ -1,7 +1,7 @@
-from errors import TaskNotFoundError
-from operations import add_task, build_statistics, completion_percent
-from operations import get_task, mark_task_done, search_tasks
-from validators import normalize_title
+from app.errors import TaskNotFoundError
+from app.operations import add_task, build_statistics, completion_percent
+from app.operations import get_task, mark_task_done, search_tasks
+from app.validators import normalize_title
 
 
 def read_title():

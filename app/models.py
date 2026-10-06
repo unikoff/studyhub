@@ -1,4 +1,4 @@
-from validators import validate_priority, validate_task_id, validate_title
+from app.validators import validate_priority, validate_task_id, validate_title
 
 def create_task(task_id, title, priority=2):
     task_id = validate_task_id(task_id)
