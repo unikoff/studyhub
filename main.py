@@ -196,27 +196,25 @@ def run(tasks=None):
     if tasks is None:
         tasks = []
 
+    handlers = {
+        "add": handle_add,
+        "list": handle_list,
+        "find": handle_find,
+        "done": handle_done,
+        "search": handle_search,
+        "stats": handle_stats,
+    }
+
     while True:
         show_menu()
         command = input("Команда: ").strip().lower()
-        if command not in ("add", "list", "find", "done", "search", "stats", "exit"):
-            print("Неизвестная команда")
-            continue
         if command == "exit":
             print("Работу завершили")
             break
-        if command == "add":
-            handle_add(tasks)
-        elif command == "find":
-            handle_find(tasks)
-        elif command == "done":
-            handle_done(tasks)
-        elif command == "search":
-            handle_search(tasks)
-        elif command == "stats":
-            handle_stats(tasks)
-        elif command == "list":
-            handle_list(tasks)
+        if command not in handlers:
+            print("Неизвестная команда")
+            continue
+        handlers[command](tasks)
     return tasks
 
 
