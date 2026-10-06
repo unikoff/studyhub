@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from app.errors import StorageError
 from app.validators import validate_priority, validate_task_id, validate_title
 
 
@@ -70,12 +71,30 @@ def load_tasks(path: Path):
             text = file.read()
     except FileNotFoundError:
         return []
-    return validate_loaded_tasks(decode_tasks(text))
+    except (OSError, UnicodeDecodeError) as error:
+        raise StorageError("Не удалось прочитать файл задач") from error
+
+    try:
+        tasks = decode_tasks(text)
+    except json.JSONDecodeError as error:
+        raise StorageError("Файл задач содержит неверный JSON") from error
+
+    try:
+        validate_loaded_tasks(tasks)
+    except ValueError as error:
+        raise StorageError("Файл задач имеет неверную форму") from error
+    return tasks
 
 
 def save_tasks(path: Path, tasks):
-    validate_loaded_tasks(tasks)
+    try:
+        validate_loaded_tasks(tasks)
+    except ValueError as error:
+        raise StorageError("Нельзя сохранить неверный снимок") from error
     text = encode_tasks(tasks)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
-        file.write(text)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as file:
+            file.write(text)
+    except OSError as error:
+        raise StorageError("Не удалось записать файл задач") from error
