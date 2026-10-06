@@ -122,6 +122,17 @@ def format_task(task):
     return f"[{task['id']}] {task['title']} | приоритет: {task['priority']} | {state}"
 
 
+def make_trace(operation, prefix):
+    def wrapper(*args, **kwargs):
+        print(f"{prefix} START")
+        result = operation(*args, **kwargs)
+        print(f"{prefix} DONE {result}")
+        return result
+    return wrapper
+
+
+traced_format_task = make_trace(format_task, "TRACE")
+
 def handle_add(tasks):
     title = read_title()
     priority = read_priority()
