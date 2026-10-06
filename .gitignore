@@ -3,3 +3,4 @@ STUDYHUB_LEARNINGS.md
 .venv/
 __pycache__/
 *.pyc
+data/tasks.json

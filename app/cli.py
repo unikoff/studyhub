@@ -59,7 +59,7 @@ def make_trace(operation, prefix):
 
 traced_format_task = make_trace(format_task, "TRACE")
 
-def handle_add(tasks):
+def handle_add(tasks, on_change=None):
     title = read_title()
     priority = read_priority()
     try:
@@ -67,10 +67,12 @@ def handle_add(tasks):
     except ValueError as error:
         print(error)
     else:
+        if on_change is not None:
+            on_change(tasks)
         print(format_task(task))
 
 
-def handle_find(tasks):
+def handle_find(tasks, on_change=None):
     try:
         task = get_task(tasks, read_task_id())
     except TaskNotFoundError:
@@ -79,16 +81,20 @@ def handle_find(tasks):
         print(format_task(task))
 
 
-def handle_done(tasks):
+def handle_done(tasks, on_change=None):
     try:
-        mark_task_done(tasks, read_task_id())
+        task = get_task(tasks, read_task_id())
+        was_done = task["is_done"]
+        mark_task_done(tasks, task["id"])
     except TaskNotFoundError:
         print("Задача не найдена")
     else:
+        if not was_done and on_change is not None:
+            on_change(tasks)
         print("Задача выполнена")
 
 
-def handle_search(tasks):
+def handle_search(tasks, on_change=None):
     query = input("Фрагмент названия: ")
     if query.strip() == "":
         print("Введите непустой фрагмент")
@@ -100,7 +106,7 @@ def handle_search(tasks):
         show_tasks(matches)
 
 
-def handle_stats(tasks):
+def handle_stats(tasks, on_change=None):
     statistics = build_statistics(tasks)
     percent = completion_percent(statistics)
     print(f"Всего: {statistics['total']}")
@@ -109,7 +115,7 @@ def handle_stats(tasks):
     print(f"Процент выполнения: {percent}%")
 
 
-def handle_list(tasks):
+def handle_list(tasks, on_change=None):
     show_tasks(tasks)
 
 
@@ -133,7 +139,9 @@ def show_tasks(tasks):
         print(format_task(task))
 
 
-def run(tasks):
+def run(tasks=None, on_change=None):
+    if tasks is None:
+        tasks = []
 
     handlers = {
         "add": handle_add,
@@ -153,5 +161,5 @@ def run(tasks):
         if command not in handlers:
             print("Неизвестная команда")
             continue
-        handlers[command](tasks)
+        handlers[command](tasks, on_change)
     return tasks
