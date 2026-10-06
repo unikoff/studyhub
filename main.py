@@ -81,14 +81,20 @@ def read_title():
         return title
 
 
-def read_priority():
+def read_int(prompt):
     while True:
-        raw_value = input("Приоритет от 1 до 5: ")
+        raw_value = input(prompt)
         try:
-            priority = int(raw_value)
+            value = int(raw_value)
         except ValueError:
             print("Введите целое число")
             continue
+        return value
+
+
+def read_priority():
+    while True:
+        priority = read_int("Приоритет от 1 до 5: ")
         if 1 <= priority <= 5:
             return priority
         print("Приоритет должен быть от 1 до 5")
@@ -96,12 +102,7 @@ def read_priority():
 
 def read_task_id():
     while True:
-        raw_value = input("Номер задачи: ")
-        try:
-            task_id = int(raw_value)
-        except ValueError:
-            print("Введите целое число")
-            continue
+        task_id = read_int("Номер задачи: ")
         if task_id > 0:
             return task_id
         print("Номер должен быть положительным")
