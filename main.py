@@ -61,10 +61,19 @@ def find_task(tasks, task_id):
     return None
 
 
-def mark_task_done(tasks, task_id):
+class TaskNotFoundError(Exception):
+    pass
+
+
+def get_task(tasks, task_id):
     task = find_task(tasks, task_id)
     if task is None:
-        return False
+        raise TaskNotFoundError(f"Задача с номером {task_id} не найдена")
+    return task
+
+
+def mark_task_done(tasks, task_id):
+    task = get_task(tasks, task_id)
     task["is_done"] = True
     return True
 
@@ -174,21 +183,21 @@ def handle_add(tasks):
 
 
 def handle_find(tasks):
-    task_id = read_task_id()
-    task = find_task(tasks, task_id)
-    if task is None:
+    try:
+        task = get_task(tasks, read_task_id())
+    except TaskNotFoundError:
         print("Задача не найдена")
     else:
         print(format_task(task))
 
 
 def handle_done(tasks):
-    task_id = read_task_id()
-    is_found = mark_task_done(tasks, task_id)
-    if is_found:
-        print("Задача выполнена")
-    else:
+    try:
+        mark_task_done(tasks, read_task_id())
+    except TaskNotFoundError:
         print("Задача не найдена")
+    else:
+        print("Задача выполнена")
 
 
 def handle_search(tasks):
