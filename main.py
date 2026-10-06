@@ -192,8 +192,10 @@ def show_tasks(tasks):
         print(format_task(task))
 
 
-def run():
-    tasks = []
+def run(tasks=None):
+    if tasks is None:
+        tasks = []
+
     while True:
         show_menu()
         command = input("Команда: ").strip().lower()
@@ -215,6 +217,7 @@ def run():
             handle_stats(tasks)
         elif command == "list":
             handle_list(tasks)
+    return tasks
 
 
 run()
