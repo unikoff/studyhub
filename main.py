@@ -159,6 +159,19 @@ def handle_search(tasks):
         show_tasks(matches)
 
 
+def handle_stats(tasks):
+    statistics = build_statistics(tasks)
+    percent = completion_percent(statistics)
+    print(f"Всего: {statistics['total']}")
+    print(f"Выполнено: {statistics['completed']}")
+    print(f"Осталось: {statistics['left']}")
+    print(f"Процент выполнения: {percent}%")
+
+
+def handle_list(tasks):
+    show_tasks(tasks)
+
+
 def show_menu():
     print()
     print("StudyHub Planner")
@@ -199,14 +212,9 @@ def run():
         elif command == "search":
             handle_search(tasks)
         elif command == "stats":
-            statistics = build_statistics(tasks)
-            percent = completion_percent(statistics)
-            print(f"Всего: {statistics['total']}")
-            print(f"Выполнено: {statistics['completed']}")
-            print(f"Осталось: {statistics['left']}")
-            print(f"Процент выполнения: {percent}%")
-        else:
-            show_tasks(tasks)
+            handle_stats(tasks)
+        elif command == "list":
+            handle_list(tasks)
 
 
 run()
