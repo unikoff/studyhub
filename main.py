@@ -1,4 +1,7 @@
 def create_task(task_id, title, priority=2):
+    task_id = validate_task_id(task_id)
+    title = validate_title(title)
+    priority = validate_priority(priority)
     return {
         "id": task_id,
         "title": title,
@@ -9,6 +12,31 @@ def create_task(task_id, title, priority=2):
 
 def normalize_title(title):
     return title.strip()
+
+
+def validate_title(title):
+    if not isinstance(title, str):
+        raise ValueError("Название должно быть строкой")
+    normalized = normalize_title(title)
+    if normalized == "":
+        raise ValueError("Название не может быть пустым")
+    return normalized
+
+
+def validate_priority(priority):
+    if not isinstance(priority, int):
+        raise ValueError("Приоритет должен быть целым числом")
+    if not 1 <= priority <= 5:
+        raise ValueError("Приоритет должен быть от 1 до 5")
+    return priority
+
+
+def validate_task_id(task_id):
+    if not isinstance(task_id, int):
+        raise ValueError("Номер задачи должен быть целым числом")
+    if task_id <= 0:
+        raise ValueError("Номер задачи должен быть положительным")
+    return task_id
 
 
 def get_next_id(tasks):
@@ -137,8 +165,12 @@ traced_format_task = make_trace(format_task, "TRACE")
 def handle_add(tasks):
     title = read_title()
     priority = read_priority()
-    task = add_task(tasks, title, priority)
-    print(format_task(task))
+    try:
+        task = add_task(tasks, title, priority)
+    except ValueError as error:
+        print(error)
+    else:
+        print(format_task(task))
 
 
 def handle_find(tasks):
