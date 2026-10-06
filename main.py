@@ -1,112 +1,7 @@
-def create_task(task_id, title, priority=2):
-    task_id = validate_task_id(task_id)
-    title = validate_title(title)
-    priority = validate_priority(priority)
-    return {
-        "id": task_id,
-        "title": title,
-        "priority": priority,
-        "is_done": False,
-    }
-
-
-def normalize_title(title):
-    return title.strip()
-
-
-def validate_title(title):
-    if not isinstance(title, str):
-        raise ValueError("Название должно быть строкой")
-    normalized = normalize_title(title)
-    if normalized == "":
-        raise ValueError("Название не может быть пустым")
-    return normalized
-
-
-def validate_priority(priority):
-    if not isinstance(priority, int):
-        raise ValueError("Приоритет должен быть целым числом")
-    if not 1 <= priority <= 5:
-        raise ValueError("Приоритет должен быть от 1 до 5")
-    return priority
-
-
-def validate_task_id(task_id):
-    if not isinstance(task_id, int):
-        raise ValueError("Номер задачи должен быть целым числом")
-    if task_id <= 0:
-        raise ValueError("Номер задачи должен быть положительным")
-    return task_id
-
-
-def get_next_id(tasks):
-    max_id = 0
-    for task in tasks:
-        if task["id"] > max_id:
-            max_id = task["id"]
-    return max_id + 1
-
-
-def add_task(tasks, title, priority):
-    task_id = get_next_id(tasks)
-    new_task = create_task(task_id, title, priority)
-    tasks.append(new_task)
-    return new_task
-
-
-def find_task(tasks, task_id):
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
-    return None
-
-
-class TaskNotFoundError(Exception):
-    pass
-
-
-def get_task(tasks, task_id):
-    task = find_task(tasks, task_id)
-    if task is None:
-        raise TaskNotFoundError(f"Задача с номером {task_id} не найдена")
-    return task
-
-
-def mark_task_done(tasks, task_id):
-    task = get_task(tasks, task_id)
-    task["is_done"] = True
-    return True
-
-
-def build_statistics(tasks):
-    total = 0
-    completed = 0
-    for task in tasks:
-        total += 1
-        if task["is_done"]:
-            completed += 1
-    left = total - completed
-    return {"total": total, "completed": completed, "left": left}
-
-
-def completion_percent(statistics):
-    total = statistics["total"]
-    if total == 0:
-        return 0.0
-    completed = statistics["completed"]
-    return round(completed / total * 100, 1)
-
-
-def search_tasks(tasks, query):
-    normalized_query = query.strip().lower()
-    matches = []
-    if normalized_query == "":
-        return matches
-    for task in tasks:
-        comparison_title = task["title"].lower()
-        if normalized_query in comparison_title:
-            matches.append(task)
-    return matches
+from errors import TaskNotFoundError
+from operations import add_task, build_statistics, completion_percent
+from operations import get_task, mark_task_done, search_tasks
+from validators import normalize_title
 
 
 def read_title():
@@ -271,4 +166,5 @@ def run(tasks=None):
     return tasks
 
 
-run()
+if __name__ == "__main__":
+    run()
