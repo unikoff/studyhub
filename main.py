@@ -118,7 +118,7 @@ def format_task(task):
     if task["is_done"]:
         state = "выполнена"
     else:
-        state = "открыта"
+        state = "не завершена"
     return f"[{task['id']}] {task['title']} | приоритет: {task['priority']} | {state}"
 
 
