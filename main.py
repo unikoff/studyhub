@@ -1,4 +1,4 @@
-def create_task(task_id, title, priority):
+def create_task(task_id, title, priority=2):
     return {
         "id": task_id,
         "title": title,
