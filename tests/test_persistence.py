@@ -64,3 +64,38 @@ def test_malformed_json_raises_storage_error_without_rewrite(tmp_path):
         service.list_tasks()
 
     assert path.read_bytes() == before
+
+
+def test_added_task_uses_max_id_and_full_task_survives_new_service(tmp_path):
+    from app.models import Task
+
+    path = tmp_path / "tasks.json"
+    storage = JsonStorage(path)
+    storage.save(
+        [
+            Task(id=2, title="HTTP", priority=3, tags=["existing"]),
+            Task(
+                id=7,
+                title="JSON",
+                priority=4,
+                is_done=True,
+                tags=["keep"],
+            ),
+        ]
+    )
+
+    first_service = PlannerService(storage)
+    created = first_service.add_task("Planner API", priority=5)
+
+    second_service = PlannerService(JsonStorage(path))
+    loaded = second_service.list_tasks()
+
+    assert created.id == 8
+    assert [
+        (task.id, task.title, task.priority, task.is_done, task.tags)
+        for task in loaded
+    ] == [
+        (2, "HTTP", 3, False, ["existing"]),
+        (7, "JSON", 4, True, ["keep"]),
+        (8, "Planner API", 5, False, []),
+    ]
