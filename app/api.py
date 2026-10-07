@@ -1,20 +1,8 @@
 from fastapi import FastAPI, HTTPException, Query, status
-from pydantic import BaseModel, Field, field_validator
 
 from app.errors import TaskNotFoundError
 from app.main import build_service
-
-
-class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
-    priority: int = Field(ge=1, le=5)
-
-    @field_validator("title", mode="before")
-    @classmethod
-    def strip_title(cls, value: object) -> object:
-        if isinstance(value, str):
-            return value.strip()
-        return value
+from app.schemas import TaskCreate, TaskRead
 
 
 app = FastAPI(title="StudyHub Planner")
@@ -26,7 +14,7 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.get("/tasks")
+@app.get("/tasks", response_model=list[TaskRead])
 def read_tasks(
     is_done: bool | None = None,
     sort_desc: bool = False,
@@ -58,7 +46,7 @@ def read_stats():
     }
 
 
-@app.get("/tasks/{task_id}")
+@app.get("/tasks/{task_id}", response_model=TaskRead)
 def read_task(task_id: int):
     try:
         task = app.state.planner.get_task(task_id)
@@ -75,7 +63,7 @@ def read_task(task_id: int):
     }
 
 
-@app.post("/tasks", status_code=status.HTTP_201_CREATED)
+@app.post("/tasks", status_code=status.HTTP_201_CREATED, response_model=TaskRead)
 def create_task(payload: TaskCreate):
     try:
         task = app.state.planner.add_task(
