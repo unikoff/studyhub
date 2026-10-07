@@ -99,3 +99,24 @@ def test_added_task_uses_max_id_and_full_task_survives_new_service(tmp_path):
         (7, "JSON", 4, True, ["keep"]),
         (8, "Planner API", 5, False, []),
     ]
+
+
+def test_select_tasks_does_not_change_full_planner(tmp_path):
+    from app.models import Task
+
+    path = tmp_path / "tasks.json"
+    original = [
+        Task(id=2, title="CLI", priority=2, is_done=False, tags=["terminal"]),
+        Task(id=7, title="HTTP", priority=4, is_done=True, tags=["api"]),
+        Task(id=11, title="Tests", priority=3, is_done=False, tags=["pytest"]),
+    ]
+    JsonStorage(path).save(original)
+    service = PlannerService(JsonStorage(path))
+
+    selected = service.select_tasks(is_done=False, sort_desc=True, limit=1)
+
+    reader = PlannerService(JsonStorage(path))
+    assert [task.id for task in selected] == [11]
+    assert [task.id for task in reader.list_tasks()] == [2, 7, 11]
+    assert reader.get_statistics() == {"all": 3, "open": 2, "done": 1}
+    assert JsonStorage(path).load() == original
