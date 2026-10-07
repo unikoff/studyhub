@@ -65,3 +65,14 @@ class JsonStorage:
                 file.write(text)
         except OSError as error:
             raise StorageError("Не удалось записать файл задач") from error
+
+
+class MemoryStorage:
+    def __init__(self, tasks=None):
+        self._tasks = list(tasks) if tasks is not None else []
+
+    def load(self):
+        return list(self._tasks)
+
+    def save(self, tasks):
+        self._tasks = list(tasks)
