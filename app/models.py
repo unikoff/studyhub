@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from app.validators import (
     validate_priority,
     validate_task_id,
@@ -18,29 +20,24 @@ def create_task(task_id, title, priority=2):
     }
 
 
+@dataclass
 class Task:
-    def __init__(
-        self,
-        id: int,
-        title: str,
-        priority: int = 2,
-        is_done: bool = False,
-    ) -> None:
-        if type(id) is not int:
+    id: int
+    title: str
+    priority: int = 2
+    is_done: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.id) is not int:
             raise ValueError("id должен быть целым числом")
-        if type(priority) is not int:
+        if type(self.priority) is not int:
             raise ValueError("priority должен быть целым числом")
-        if type(is_done) is not bool:
+        if type(self.is_done) is not bool:
             raise ValueError("is_done должен быть bool")
 
-        checked_id = validate_task_id(id)
-        checked_title = validate_title(title)
-        checked_priority = validate_priority(priority)
-
-        self.id = checked_id
-        self.title = checked_title
-        self.priority = checked_priority
-        self.is_done = is_done
+        self.id = validate_task_id(self.id)
+        self.title = validate_title(self.title)
+        self.priority = validate_priority(self.priority)
 
     def mark_done(self) -> None:
         self.is_done = True
