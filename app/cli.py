@@ -1,5 +1,4 @@
 from app.errors import TaskNotFoundError
-from app.operations import add_task, completion_percent, mark_task_done
 from app.services import PlannerService
 from app.validators import normalize_title
 
@@ -58,11 +57,12 @@ def make_trace(operation, prefix):
 
 traced_format_task = make_trace(format_task, "TRACE")
 
-def handle_add(storage):
+
+def handle_add(service):
     title = read_title()
     priority = read_priority()
     try:
-        task = add_task(storage, title, priority)
+        task = service.add_task(title, priority)
     except ValueError as error:
         print(error)
     else:
@@ -80,13 +80,27 @@ def handle_find(service):
         print(format_task(task))
 
 
-def handle_done(storage):
+def handle_done(service):
     try:
-        mark_task_done(storage, read_task_id())
+        task = service.mark_done(read_task_id())
+    except ValueError as error:
+        print(error)
     except TaskNotFoundError:
         print("Задача не найдена")
     else:
-        print("Задача выполнена")
+        print(f"Задача {task.id} выполнена")
+
+
+def handle_delete(service):
+    try:
+        task_id = read_task_id()
+        service.delete_task(task_id)
+    except ValueError as error:
+        print(error)
+    except TaskNotFoundError:
+        print("Задача не найдена")
+    else:
+        print("Задача удалена")
 
 
 def handle_search(service):
@@ -103,8 +117,9 @@ def handle_search(service):
 
 def handle_stats(service):
     statistics = service.get_statistics()
-    percent = completion_percent(statistics)
-    print(f"Всего: {statistics['all']}")
+    total = statistics["all"]
+    percent = 0.0 if total == 0 else round(statistics["done"] / total * 100, 1)
+    print(f"Всего: {total}")
     print(f"Выполнено: {statistics['done']}")
     print(f"Осталось: {statistics['open']}")
     print(f"Процент выполнения: {percent}%")
@@ -121,6 +136,7 @@ def show_menu():
     print("list - показать задачи")
     print("find - найти задачу по id")
     print("done - завершить задачу")
+    print("delete - удалить задачу")
     print("search - искать по названию")
     print("stats - показать статистику")
     print("exit - завершить работу")
@@ -134,13 +150,13 @@ def show_tasks(tasks):
         print(format_task(task))
 
 
-def run(storage):
-    service = PlannerService(storage)
+def run(service):
     handlers = {
         "add": handle_add,
         "list": handle_list,
         "find": handle_find,
         "done": handle_done,
+        "delete": handle_delete,
         "search": handle_search,
         "stats": handle_stats,
     }
@@ -154,8 +170,5 @@ def run(storage):
         if command not in handlers:
             print("Неизвестная команда")
             continue
-        if command in {"add", "done"}:
-            handlers[command](storage)
-        else:
-            handlers[command](service)
-    return storage
+        handlers[command](service)
+    return service

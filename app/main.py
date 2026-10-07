@@ -2,14 +2,22 @@ from pathlib import Path
 
 from app.cli import run
 from app.errors import StorageError
+from app.services import PlannerService
 from app.storage import JsonStorage
 
 
+DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "tasks.json"
+
+
+def build_service(storage=None):
+    if storage is None:
+        storage = JsonStorage(DATA_PATH)
+    return PlannerService(storage)
+
+
 def main():
-    data_file = Path(__file__).resolve().parents[1] / "data" / "tasks.json"
-    storage = JsonStorage(data_file)
     try:
-        return run(storage)
+        return run(build_service())
     except StorageError as error:
         print(f"Planner остановлен: {error}")
 
