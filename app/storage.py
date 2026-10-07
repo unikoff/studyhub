@@ -2,12 +2,7 @@ import json
 from pathlib import Path
 
 from app.errors import StorageError
-from app.validators import (
-    validate_priority,
-    validate_task_id,
-    validate_task_record,
-    validate_title,
-)
+from app.models import Task
 
 
 def encode_tasks(tasks):
@@ -24,42 +19,21 @@ def validate_loaded_tasks(tasks):
 
     seen_ids = set()
     for index, task in enumerate(tasks):
-        validate_task_record(task, f"tasks[{index}]")
-
-        task_id = task["id"]
-        title = task["title"]
-        priority = task["priority"]
-        is_done = task["is_done"]
-
-        if type(task_id) is not int:
-            raise ValueError(f"tasks[{index}].id: ожидается целое число")
-        if type(priority) is not int:
-            raise ValueError(f"tasks[{index}].priority: ожидается целое число")
-        if type(title) is not str:
-            raise ValueError(f"tasks[{index}].title: ожидается строка")
-        if type(is_done) is not bool:
-            raise ValueError(f"tasks[{index}].is_done: ожидается bool")
+        if not isinstance(task, Task):
+            raise ValueError(f"tasks[{index}]: ожидается Task")
 
         try:
-            validate_task_id(task_id)
-        except ValueError as error:
-            raise ValueError(f"tasks[{index}].id: {error}") from error
+            if not isinstance(task.tags, list):
+                raise ValueError("tags должны быть списком")
+            checked_task = Task.from_dict(task.to_dict())
+            if checked_task != task:
+                raise ValueError("значения Task не нормализованы")
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError(f"tasks[{index}]: неверная задача") from error
 
-        try:
-            validate_priority(priority)
-        except ValueError as error:
-            raise ValueError(f"tasks[{index}].priority: {error}") from error
-
-        try:
-            normalized_title = validate_title(title)
-        except ValueError as error:
-            raise ValueError(f"tasks[{index}].title: {error}") from error
-        if normalized_title != title:
-            raise ValueError(f"tasks[{index}].title: название не нормализовано")
-
-        if task_id in seen_ids:
-            raise ValueError(f"tasks[{index}].id: повторяется {task_id}")
-        seen_ids.add(task_id)
+        if task.id in seen_ids:
+            raise ValueError(f"tasks[{index}].id: повторяется {task.id}")
+        seen_ids.add(task.id)
 
     return tasks
 
@@ -74,11 +48,24 @@ def load_tasks(path: Path):
         raise StorageError("Не удалось прочитать файл задач") from error
 
     try:
-        tasks = decode_tasks(text)
+        records = decode_tasks(text)
     except json.JSONDecodeError as error:
         raise StorageError("Файл задач содержит неверный JSON") from error
 
     try:
+        if not isinstance(records, list):
+            raise ValueError("Корень снимка должен быть списком")
+
+        tasks = []
+        for index, record in enumerate(records):
+            try:
+                task = Task.from_dict(record)
+                if record.get("title") != task.title:
+                    raise ValueError("название в снимке не нормализовано")
+                tasks.append(task)
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError(f"tasks[{index}]: неверная запись") from error
+
         validate_loaded_tasks(tasks)
     except ValueError as error:
         raise StorageError("Файл задач имеет неверную форму") from error
@@ -88,9 +75,11 @@ def load_tasks(path: Path):
 def save_tasks(path: Path, tasks):
     try:
         validate_loaded_tasks(tasks)
-    except ValueError as error:
+        records = [task.to_dict() for task in tasks]
+        text = encode_tasks(records)
+    except (AttributeError, TypeError, ValueError) as error:
         raise StorageError("Нельзя сохранить неверный снимок") from error
-    text = encode_tasks(tasks)
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as file:

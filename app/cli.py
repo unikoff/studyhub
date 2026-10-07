@@ -41,11 +41,10 @@ def read_task_id():
 
 
 def format_task(task):
-    if task["is_done"]:
-        state = "выполнена"
-    else:
-        state = "не завершена"
-    return f"[{task['id']}] {task['title']} | приоритет: {task['priority']} | {state}"
+    return (
+        f"[{task.id}] {task.title} | "
+        f"приоритет: {task.priority} | {task.status_label}"
+    )
 
 
 def make_trace(operation, prefix):
@@ -84,8 +83,8 @@ def handle_find(tasks, on_change=None):
 def handle_done(tasks, on_change=None):
     try:
         task = get_task(tasks, read_task_id())
-        was_done = task["is_done"]
-        mark_task_done(tasks, task["id"])
+        was_done = task.is_done
+        mark_task_done(tasks, task.id)
     except TaskNotFoundError:
         print("Задача не найдена")
     else:
