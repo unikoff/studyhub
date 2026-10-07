@@ -1,7 +1,13 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, status
+from pydantic import BaseModel
 
 from app.errors import TaskNotFoundError
 from app.main import build_service
+
+
+class TaskCreate(BaseModel):
+    title: str
+    priority: int
 
 
 app = FastAPI(title="StudyHub Planner")
@@ -54,6 +60,27 @@ def read_task(task_id: int):
             status_code=404,
             detail="Task not found",
         ) from error
+    return {
+        "id": task.id,
+        "title": task.title,
+        "priority": task.priority,
+        "is_done": task.is_done,
+    }
+
+
+@app.post("/tasks", status_code=status.HTTP_201_CREATED)
+def create_task(payload: TaskCreate):
+    try:
+        task = app.state.planner.add_task(
+            payload.title,
+            priority=payload.priority,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
     return {
         "id": task.id,
         "title": task.title,
