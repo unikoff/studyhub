@@ -47,3 +47,15 @@ class Task:
     def set_priority(self, priority: int) -> None:
         checked_priority = validate_priority(priority)
         self.priority = checked_priority
+
+    @property
+    def status_label(self) -> str:
+        if self.is_done:
+            return "выполнена"
+        return "не завершена"
+
+    def __str__(self) -> str:
+        return (
+            f"[{self.id}] {self.title} | "
+            f"приоритет: {self.priority} | {self.status_label}"
+        )
