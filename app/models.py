@@ -1,4 +1,9 @@
-from app.validators import validate_priority, validate_task_id, validate_title
+from app.validators import (
+    validate_priority,
+    validate_task_id,
+    validate_task_record,
+    validate_title,
+)
 
 
 def create_task(task_id, title, priority=2):
@@ -58,4 +63,22 @@ class Task:
         return (
             f"[{self.id}] {self.title} | "
             f"приоритет: {self.priority} | {self.status_label}"
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "priority": self.priority,
+            "is_done": self.is_done,
+        }
+
+    @classmethod
+    def from_dict(cls, record):
+        validate_task_record(record)
+        return cls(
+            id=record["id"],
+            title=record["title"],
+            priority=record["priority"],
+            is_done=record["is_done"],
         )

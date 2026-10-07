@@ -2,10 +2,12 @@ import json
 from pathlib import Path
 
 from app.errors import StorageError
-from app.validators import validate_priority, validate_task_id, validate_title
-
-
-TASK_FIELDS = {"id", "title", "priority", "is_done"}
+from app.validators import (
+    validate_priority,
+    validate_task_id,
+    validate_task_record,
+    validate_title,
+)
 
 
 def encode_tasks(tasks):
@@ -22,10 +24,7 @@ def validate_loaded_tasks(tasks):
 
     seen_ids = set()
     for index, task in enumerate(tasks):
-        if not isinstance(task, dict):
-            raise ValueError(f"tasks[{index}]: ожидается словарь")
-        if set(task) != TASK_FIELDS:
-            raise ValueError(f"tasks[{index}]: неверный набор полей")
+        validate_task_record(task, f"tasks[{index}]")
 
         task_id = task["id"]
         title = task["title"]

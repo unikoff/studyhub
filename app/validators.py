@@ -1,3 +1,14 @@
+TASK_FIELDS = {"id", "title", "priority", "is_done"}
+
+
+def validate_task_record(record, location="record"):
+    if not isinstance(record, dict):
+        raise ValueError(f"{location}: ожидается словарь")
+    if set(record) != TASK_FIELDS:
+        raise ValueError(f"{location}: неверный набор полей")
+    return record
+
+
 def normalize_title(title):
     return title.strip()
 
