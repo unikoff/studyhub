@@ -36,3 +36,14 @@ class Task:
         self.title = checked_title
         self.priority = checked_priority
         self.is_done = is_done
+
+    def mark_done(self) -> None:
+        self.is_done = True
+
+    def rename(self, title: str) -> None:
+        checked_title = validate_title(title)
+        self.title = checked_title
+
+    def set_priority(self, priority: int) -> None:
+        checked_priority = validate_priority(priority)
+        self.priority = checked_priority

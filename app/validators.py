@@ -12,7 +12,7 @@ def validate_title(title):
 
 
 def validate_priority(priority):
-    if not isinstance(priority, int):
+    if type(priority) is not int:
         raise ValueError("Приоритет должен быть целым числом")
     if not 1 <= priority <= 5:
         raise ValueError("Приоритет должен быть от 1 до 5")
