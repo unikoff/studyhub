@@ -1,4 +1,9 @@
 import pytest
+from fastapi.testclient import TestClient
+
+from app.api import app
+from app.main import build_service
+from app.storage import JsonStorage
 
 from app.models import Task
 from app.services import PlannerService
@@ -38,3 +43,19 @@ def observed_storage(memory_storage):
 @pytest.fixture
 def planner_service(observed_storage):
     return PlannerService(observed_storage)
+
+
+@pytest.fixture
+def api_service(tmp_path):
+    return build_service(JsonStorage(tmp_path / "tasks.json"))
+
+
+@pytest.fixture
+def api_client(api_service):
+    previous_service = app.state.planner
+    app.state.planner = api_service
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.state.planner = previous_service
