@@ -1,9 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.validators import (
     validate_priority,
     validate_task_id,
     validate_task_record,
+    validate_tags,
     validate_title,
 )
 
@@ -26,6 +27,7 @@ class Task:
     title: str
     priority: int = 2
     is_done: bool = False
+    tags: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if type(self.id) is not int:
@@ -38,6 +40,7 @@ class Task:
         self.id = validate_task_id(self.id)
         self.title = validate_title(self.title)
         self.priority = validate_priority(self.priority)
+        self.tags = validate_tags(self.tags)
 
     def mark_done(self) -> None:
         self.is_done = True
@@ -68,14 +71,29 @@ class Task:
             "title": self.title,
             "priority": self.priority,
             "is_done": self.is_done,
+            "tags": list(self.tags),
         }
 
     @classmethod
     def from_dict(cls, record):
-        validate_task_record(record)
+        if not isinstance(record, dict):
+            raise ValueError("Запись задачи должна быть словарём")
+
+        old_fields = {"id", "title", "priority", "is_done"}
+        record_fields = set(record)
+        if record_fields == old_fields:
+            tags = []
+        elif record_fields == old_fields | {"tags"}:
+            tags = record["tags"]
+        else:
+            raise ValueError("Неверный набор полей задачи")
+
+        legacy_record = {key: record[key] for key in old_fields}
+        validate_task_record(legacy_record)
         return cls(
             id=record["id"],
             title=record["title"],
             priority=record["priority"],
             is_done=record["is_done"],
+            tags=tags,
         )

@@ -36,3 +36,18 @@ def validate_task_id(task_id):
     if task_id <= 0:
         raise ValueError("Номер задачи должен быть положительным")
     return task_id
+
+
+def validate_tags(tags):
+    if not isinstance(tags, list):
+        raise ValueError("Метки должны быть списком")
+
+    normalized = []
+    for tag in tags:
+        if not isinstance(tag, str):
+            raise ValueError("Каждая метка должна быть строкой")
+        tag = tag.strip()
+        if not tag:
+            raise ValueError("Метка не может быть пустой")
+        normalized.append(tag)
+    return normalized
