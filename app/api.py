@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from app.errors import TaskNotFoundError
 from app.main import build_service
@@ -14,8 +14,16 @@ def health_check():
 
 
 @app.get("/tasks")
-def read_tasks():
-    tasks = app.state.planner.list_tasks()
+def read_tasks(
+    is_done: bool | None = None,
+    sort_desc: bool = False,
+    limit: int = Query(default=10, ge=1, le=50),
+):
+    tasks = app.state.planner.select_tasks(
+        is_done=is_done,
+        sort_desc=sort_desc,
+        limit=limit,
+    )
     return [
         {
             "id": task.id,

@@ -19,6 +19,28 @@ class PlannerService:
     def list_tasks(self):
         return self.storage.load()
 
+    def select_tasks(
+        self,
+        is_done: bool | None = None,
+        sort_desc: bool = False,
+        limit: int | None = None,
+    ) -> list[Task]:
+        tasks = self.list_tasks()
+
+        if is_done is not None:
+            tasks = [task for task in tasks if task.is_done == is_done]
+
+        tasks = sorted(
+            tasks,
+            key=lambda task: task.id,
+            reverse=sort_desc,
+        )
+
+        if limit is not None:
+            tasks = tasks[:limit]
+
+        return tasks
+
     def get_task(self, task_id):
         tasks = self.storage.load()
         return self._find_task(tasks, task_id)
