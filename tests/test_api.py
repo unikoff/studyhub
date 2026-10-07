@@ -17,6 +17,14 @@ def test_health_and_empty_state(api_client):
     assert api_client.get("/stats").json() == {"total": 0, "open": 0, "done": 0}
 
 
+def test_tasks_collection_responds_without_redirect(api_client):
+    response = api_client.get("/tasks", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert response.history == []
+    assert response.headers.get("location") is None
+    assert response.json() == []
+
 def test_list_and_stats_use_seeded_api_state(api_client, api_service):
     first = api_service.add_task("Open task", 2, tags=["api-test"])
     second = api_service.add_task("Done task", 4, tags=["keep"])

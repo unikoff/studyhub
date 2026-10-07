@@ -55,7 +55,7 @@ def api_client(api_service):
     previous_service = app.state.planner
     app.state.planner = api_service
     try:
-        with TestClient(app) as test_client:
+        with TestClient(app, follow_redirects=False) as test_client:
             yield test_client
     finally:
         app.state.planner = previous_service
