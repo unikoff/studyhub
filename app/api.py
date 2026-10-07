@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
+from app.errors import TaskNotFoundError
 from app.main import build_service
 
 
@@ -33,4 +34,21 @@ def read_stats():
         "total": statistics["all"],
         "open": statistics["open"],
         "done": statistics["done"],
+    }
+
+
+@app.get("/tasks/{task_id}")
+def read_task(task_id: int):
+    try:
+        task = app.state.planner.get_task(task_id)
+    except TaskNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        ) from error
+    return {
+        "id": task.id,
+        "title": task.title,
+        "priority": task.priority,
+        "is_done": task.is_done,
     }
