@@ -183,3 +183,33 @@ def test_patch_with_no_fields_or_none_does_not_change_or_save(
     assert planner_service.patch_task(1, is_done=None) == original
     assert original.to_dict() == before
     assert observed_storage.save_calls == 0
+
+
+def test_failed_replace_does_not_save_or_change_existing_task(
+    observed_storage, planner_service
+):
+    original = Task(1, "Keep", 2, tags=["keep"])
+    observed_storage.inner.save([original])
+    observed_storage.save_calls = 0
+    before = original.to_dict()
+
+    with pytest.raises(ValueError):
+        planner_service.replace_task(1, title="  ", priority=2, is_done=False)
+
+    assert original.to_dict() == before
+    assert observed_storage.save_calls == 0
+
+
+def test_failed_patch_does_not_save_or_change_existing_task(
+    observed_storage, planner_service
+):
+    original = Task(1, "Keep", 2, tags=["keep"])
+    observed_storage.inner.save([original])
+    observed_storage.save_calls = 0
+    before = original.to_dict()
+
+    with pytest.raises(ValueError):
+        planner_service.patch_task(1, title="  ")
+
+    assert original.to_dict() == before
+    assert observed_storage.save_calls == 0

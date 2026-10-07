@@ -1,22 +1,30 @@
-# Release notes — draft for the accepted StudyHub Planner
+# Planner API v1.0.0 — кандидат на выпуск
 
-**Status:** prepared after the clean-copy checks; no tag or GitHub Release has been created.
+**Статус:** локально проверенный кандидат; тег и GitHub Release не созданы.
 
-## Included
+## Состав
 
-- Persistent task management through the console CLI.
-- JSON storage with restart recovery and legacy records without `tags`.
-- Regression checks for CLI effects, storage errors, and service restart.
-- Windows PowerShell instructions for setup, tests, and a persistence walkthrough.
+- FastAPI API и CLI используют общий PlannerService и JsonStorage.
+- JSON сохраняет задачи после перезапуска; чтение поддерживает старые записи без tags.
+- Проверки охватывают модель, сервис, хранилище, API-контракт, CLI и сквозной сценарий.
+- Postman collection и environment описывают ручные запросы и сквозной workflow.
+- Зависимости закреплены в requirements-файлах.
 
-## Verification to record with the accepted revision
+## Проверки
 
 - Python 3.12.10.
-- Install development checks from `requirements-dev.txt`.
-- Run `python -m pytest -q` in a clean clone.
-- Exercise add/done, exit, and list/stats in a second process.
-- Record the exact accepted commit with `git rev-parse HEAD`.
+- Установка requirements-dev.txt в чистом окружении.
+- Полный pytest: 135 passed, предупреждений нет.
+- tests/test_workflow.py также запускался отдельно и прошёл.
+- В чистой копии /health и /docs ответили 200; созданная CLI задача была видна через API и пережила перезапуск Uvicorn. Проверочные записи после сценария удалены.
+- Рабочий data/tasks.json не использовался тестами.
 
-## Known limits
+## Ожидающая приёмка
 
-JSON snapshots are written without transaction or atomic-replacement guarantees. Concurrent writers are not coordinated. Model and MemoryStorage unit coverage from the skipped earlier lesson steps remains incomplete in this checkout and is called out in `test-matrix.md`.
+Живой импорт и запуск Postman collection через Desktop Agent не подтверждены. Перед выпуском пройти сценарий из review.md на чистой копии проекта.
+
+При выпуске записать фактический SHA принятого коммита в аннотацию тега и release notes.
+
+## Ограничения
+
+Хранилище использует локальный JSON без транзакционной или атомарной замены файла. Записи из нескольких процессов не координируются. API не включает аутентификацию и production deployment.
