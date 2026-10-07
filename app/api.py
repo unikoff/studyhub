@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Query, status
 
 from app.errors import TaskNotFoundError
 from app.main import build_service
-from app.schemas import TaskCreate, TaskRead
+from app.schemas import TaskCreate, TaskPatch, TaskRead, TaskUpdate
 
 
 app = FastAPI(title="StudyHub Planner")
@@ -61,6 +61,37 @@ def read_task(task_id: int):
         "priority": task.priority,
         "is_done": task.is_done,
     }
+
+
+@app.put("/tasks/{task_id}", response_model=TaskRead)
+def update_task(task_id: int, payload: TaskUpdate):
+    try:
+        return app.state.planner.replace_task(
+            task_id,
+            title=payload.title,
+            priority=payload.priority,
+            is_done=payload.is_done,
+        )
+    except TaskNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        ) from error
+
+
+@app.patch("/tasks/{task_id}", response_model=TaskRead)
+def patch_task_endpoint(task_id: int, payload: TaskPatch):
+    changes = payload.model_dump(
+        exclude_unset=True,
+        exclude_none=True,
+    )
+    try:
+        return app.state.planner.patch_task(task_id, **changes)
+    except TaskNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        ) from error
 
 
 @app.post("/tasks", status_code=status.HTTP_201_CREATED, response_model=TaskRead)

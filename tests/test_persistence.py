@@ -120,3 +120,78 @@ def test_select_tasks_does_not_change_full_planner(tmp_path):
     assert [task.id for task in reader.list_tasks()] == [2, 7, 11]
     assert reader.get_statistics() == {"all": 3, "open": 2, "done": 1}
     assert JsonStorage(path).load() == original
+
+
+def test_replace_and_patch_save_validated_tasks_without_losing_tags(tmp_path):
+    from app.models import Task
+
+    path = tmp_path / "tasks.json"
+    storage = JsonStorage(path)
+    original = Task(
+        id=4,
+        title="Original",
+        priority=2,
+        is_done=False,
+        tags=["keep"],
+    )
+    storage.save([original])
+    service = PlannerService(JsonStorage(path))
+
+    replaced = service.replace_task(
+        4,
+        title="  Replaced  ",
+        priority=5,
+        is_done=True,
+    )
+    after_put = PlannerService(JsonStorage(path)).get_task(4)
+    assert (replaced.id, replaced.title, replaced.priority, replaced.is_done) == (
+        4,
+        "Replaced",
+        5,
+        True,
+    )
+    assert after_put.tags == ["keep"]
+
+    patched = service.patch_task(4, is_done=False)
+    reader = PlannerService(JsonStorage(path))
+    restored = reader.get_task(4)
+    assert patched.is_done is False
+    assert (restored.id, restored.title, restored.priority, restored.is_done) == (
+        4,
+        "Replaced",
+        5,
+        False,
+    )
+    assert restored.tags == ["keep"]
+    assert reader.get_statistics() == {"all": 1, "open": 1, "done": 0}
+
+    before_noop = path.read_bytes()
+    unchanged = service.patch_task(4)
+    assert unchanged == restored
+    assert path.read_bytes() == before_noop
+
+
+def test_failed_updates_do_not_save_or_create_missing_tasks(tmp_path):
+    from app.models import Task
+
+    path = tmp_path / "tasks.json"
+    storage = JsonStorage(path)
+    storage.save([Task(id=6, title="Keep", priority=3, tags=["original"])])
+    service = PlannerService(JsonStorage(path))
+    before = path.read_bytes()
+
+    with pytest.raises(ValueError):
+        service.replace_task(6, title="   ", priority=5, is_done=False)
+    assert path.read_bytes() == before
+
+    with pytest.raises(ValueError):
+        service.patch_task(6, title="   ")
+    assert path.read_bytes() == before
+
+    with pytest.raises(TaskNotFoundError):
+        service.replace_task(999, title="Missing", priority=2, is_done=False)
+    assert path.read_bytes() == before
+
+    with pytest.raises(TaskNotFoundError):
+        service.patch_task(999, is_done=False)
+    assert path.read_bytes() == before
