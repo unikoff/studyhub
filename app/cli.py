@@ -1,6 +1,13 @@
 from app.errors import TaskNotFoundError
-from app.operations import add_task, build_statistics, completion_percent
-from app.operations import get_task, mark_task_done, search_tasks
+from app.operations import (
+    add_task,
+    build_statistics,
+    completion_percent,
+    get_task,
+    list_tasks,
+    mark_task_done,
+    search_tasks,
+)
 from app.validators import normalize_title
 
 
@@ -58,55 +65,49 @@ def make_trace(operation, prefix):
 
 traced_format_task = make_trace(format_task, "TRACE")
 
-def handle_add(tasks, on_change=None):
+def handle_add(storage):
     title = read_title()
     priority = read_priority()
     try:
-        task = add_task(tasks, title, priority)
+        task = add_task(storage, title, priority)
     except ValueError as error:
         print(error)
     else:
-        if on_change is not None:
-            on_change(tasks)
         print(format_task(task))
 
 
-def handle_find(tasks, on_change=None):
+def handle_find(storage):
     try:
-        task = get_task(tasks, read_task_id())
+        task = get_task(storage, read_task_id())
     except TaskNotFoundError:
         print("Задача не найдена")
     else:
         print(format_task(task))
 
 
-def handle_done(tasks, on_change=None):
+def handle_done(storage):
     try:
-        task = get_task(tasks, read_task_id())
-        was_done = task.is_done
-        mark_task_done(tasks, task.id)
+        mark_task_done(storage, read_task_id())
     except TaskNotFoundError:
         print("Задача не найдена")
     else:
-        if not was_done and on_change is not None:
-            on_change(tasks)
         print("Задача выполнена")
 
 
-def handle_search(tasks, on_change=None):
+def handle_search(storage):
     query = input("Фрагмент названия: ")
     if query.strip() == "":
         print("Введите непустой фрагмент")
         return
-    matches = search_tasks(tasks, query)
+    matches = search_tasks(storage, query)
     if len(matches) == 0:
         print("Совпадений не найдено")
     else:
         show_tasks(matches)
 
 
-def handle_stats(tasks, on_change=None):
-    statistics = build_statistics(tasks)
+def handle_stats(storage):
+    statistics = build_statistics(storage)
     percent = completion_percent(statistics)
     print(f"Всего: {statistics['total']}")
     print(f"Выполнено: {statistics['completed']}")
@@ -114,8 +115,8 @@ def handle_stats(tasks, on_change=None):
     print(f"Процент выполнения: {percent}%")
 
 
-def handle_list(tasks, on_change=None):
-    show_tasks(tasks)
+def handle_list(storage):
+    show_tasks(list_tasks(storage))
 
 
 def show_menu():
@@ -138,10 +139,7 @@ def show_tasks(tasks):
         print(format_task(task))
 
 
-def run(tasks=None, on_change=None):
-    if tasks is None:
-        tasks = []
-
+def run(storage):
     handlers = {
         "add": handle_add,
         "list": handle_list,
@@ -160,5 +158,5 @@ def run(tasks=None, on_change=None):
         if command not in handlers:
             print("Неизвестная команда")
             continue
-        handlers[command](tasks, on_change)
-    return tasks
+        handlers[command](storage)
+    return storage

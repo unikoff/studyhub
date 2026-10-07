@@ -1,6 +1,7 @@
 from app.errors import TaskNotFoundError
 from app.models import Task
 
+
 def get_next_id(tasks):
     max_id = 0
     for task in tasks:
@@ -9,34 +10,49 @@ def get_next_id(tasks):
     return max_id + 1
 
 
-def add_task(tasks, title, priority):
-    task_id = get_next_id(tasks)
-    new_task = Task(task_id, title, priority)
-    tasks.append(new_task)
-    return new_task
-
-
-def find_task(tasks, task_id):
+def _find_task(tasks, task_id):
     for task in tasks:
         if task.id == task_id:
             return task
     return None
 
 
-def get_task(tasks, task_id):
-    task = find_task(tasks, task_id)
+def find_task(storage, task_id):
+    return _find_task(storage.load(), task_id)
+
+
+def get_task(storage, task_id):
+    task = find_task(storage, task_id)
     if task is None:
         raise TaskNotFoundError(f"Задача с номером {task_id} не найдена")
     return task
 
 
-def mark_task_done(tasks, task_id):
-    task = get_task(tasks, task_id)
-    task.mark_done()
+def list_tasks(storage):
+    return storage.load()
+
+
+def add_task(storage, title, priority):
+    tasks = storage.load()
+    task = Task(get_next_id(tasks), title, priority)
+    tasks.append(task)
+    storage.save(tasks)
+    return task
+
+
+def mark_task_done(storage, task_id):
+    tasks = storage.load()
+    task = _find_task(tasks, task_id)
+    if task is None:
+        raise TaskNotFoundError(f"Задача с номером {task_id} не найдена")
+    if not task.is_done:
+        task.mark_done()
+        storage.save(tasks)
     return True
 
 
-def build_statistics(tasks):
+def build_statistics(storage):
+    tasks = storage.load()
     total = 0
     completed = 0
     for task in tasks:
@@ -55,13 +71,13 @@ def completion_percent(statistics):
     return round(completed / total * 100, 1)
 
 
-def search_tasks(tasks, query):
+def search_tasks(storage, query):
     normalized_query = query.strip().lower()
-    matches = []
     if normalized_query == "":
-        return matches
+        return []
+    tasks = storage.load()
+    matches = []
     for task in tasks:
-        comparison_title = task.title.lower()
-        if normalized_query in comparison_title:
+        if normalized_query in task.title.lower():
             matches.append(task)
     return matches
