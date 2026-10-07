@@ -66,6 +66,74 @@ def test_malformed_json_raises_storage_error_without_rewrite(tmp_path):
     assert path.read_bytes() == before
 
 
+def test_legacy_json_without_tags_loads_as_an_untagged_task(tmp_path):
+    path = tmp_path / "legacy.json"
+    original = '[{"id": 4, "title": "Old task", "priority": 3, "is_done": true}]'
+    path.write_text(original, encoding="utf-8")
+
+    tasks = JsonStorage(path).load()
+
+    assert len(tasks) == 1
+    assert tasks[0].id == 4
+    assert tasks[0].title == "Old task"
+    assert tasks[0].is_done is True
+    assert tasks[0].tags == []
+    assert path.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "{}",
+        '[{"id": 1, "title": "Task", "priority": 2, "is_done": 1}]',
+        (
+            '[{"id": 1, "title": "First", "priority": 2, "is_done": false},'
+            ' {"id": 1, "title": "Second", "priority": 3, "is_done": false}]'
+        ),
+    ],
+)
+def test_invalid_json_schema_raises_without_rewriting_file(tmp_path, contents):
+    path = tmp_path / "invalid.json"
+    path.write_text(contents, encoding="utf-8")
+    before = path.read_bytes()
+
+    with pytest.raises(StorageError):
+        JsonStorage(path).load()
+
+    assert path.read_bytes() == before
+
+
+def test_reading_a_directory_as_json_raises_storage_error(tmp_path):
+    path = tmp_path / "directory"
+    path.mkdir()
+
+    with pytest.raises(StorageError):
+        JsonStorage(path).load()
+
+
+def test_unwritable_parent_raises_storage_error_without_changing_it(tmp_path):
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("keep", encoding="utf-8")
+    before = blocker.read_bytes()
+    path = blocker / "tasks.json"
+
+    with pytest.raises(StorageError):
+        JsonStorage(path).save([])
+
+    assert blocker.read_bytes() == before
+
+
+def test_invalid_snapshot_does_not_overwrite_existing_json(tmp_path, task):
+    path = tmp_path / "tasks.json"
+    path.write_text("previous data", encoding="utf-8")
+    before = path.read_bytes()
+
+    with pytest.raises(StorageError):
+        JsonStorage(path).save([task, object()])
+
+    assert path.read_bytes() == before
+
+
 def test_added_task_uses_max_id_and_full_task_survives_new_service(tmp_path):
     from app.models import Task
 

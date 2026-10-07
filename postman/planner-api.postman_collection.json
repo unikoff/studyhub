@@ -1,0 +1,1118 @@
+{
+  "info": {
+    "_postman_id": "ae31ab7f-e37b-4561-b232-cad293d59f8d",
+    "name": "Planner API",
+    "description": "Локальные сценарии занятий 52–62. Укажите base_url в environment Local и запустите API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "created_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "roundtrip_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "delete_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "missing_id",
+      "value": "999999",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "52 — Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.eql({ status: \"ok\" });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "53 — Список и статистика",
+      "item": [
+        {
+          "name": "GET /tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.be.an(\"array\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/stats"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.have.all.keys(\"total\", \"open\", \"done\");"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "54 — Чтение по ID",
+      "item": [
+        {
+          "name": "GET существующей задачи",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{created_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.have.all.keys(\"id\", \"title\", \"priority\", \"is_done\");"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "TaskRead example",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/tasks/{{created_id}}"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": 1,\n  \"title\": \"Изучить HTTP\",\n  \"priority\": 4,\n  \"is_done\": false\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET отсутствующего ID → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{missing_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET текстового ID → 422",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/not-an-int"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET ID 0 → 422",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/0"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET отрицательного ID → 422",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/-1"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "55 — Query-параметры",
+      "item": [
+        {
+          "name": "GET открытых задач с сортировкой и limit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks?is_done=false&sort_desc=true&limit=2"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().length).to.be.at.most(2);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET без фильтра и параметров",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET limit ниже минимума → 422",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks?limit=0"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET limit выше максимума → 422",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks?limit=51"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET неверный bool → 422",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks?is_done=maybe"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET неверный sort_desc → 422",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks?sort_desc=maybe"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "56 — Создание",
+      "item": [
+        {
+          "name": "POST корректная задача",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Planner collection task\",\n  \"priority\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "pm.expect(pm.response.json()).to.have.all.keys(\"id\", \"title\", \"priority\", \"is_done\");",
+                  "pm.collectionVariables.set(\"created_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "57 — Валидация тела",
+      "item": [
+        {
+          "name": "POST: пустое название → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"   \",\n  \"priority\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST: priority вне диапазона → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Invalid priority\",\n  \"priority\": 6\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST: не хватает priority → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Missing priority\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST: валидное тело → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Validated task\",\n  \"priority\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "pm.expect(pm.response.json().priority).to.eql(5);",
+                  "pm.collectionVariables.set(\"created_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "58 — TaskRead публичный ответ",
+      "item": [
+        {
+          "name": "GET TaskRead по созданному ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{created_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.have.all.keys(\"id\", \"title\", \"priority\", \"is_done\");"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "TaskRead example",
+              "originalRequest": {
+                "method": "GET",
+                "url": "{{base_url}}/tasks/{{created_id}}"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": 1,\n  \"title\": \"Изучить HTTP\",\n  \"priority\": 4,\n  \"is_done\": false\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "59 — Создать и прочитать задачу",
+      "item": [
+        {
+          "name": "POST создать задачу для чтения",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Create then read\",\n  \"priority\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "pm.collectionVariables.set(\"roundtrip_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET созданную задачу",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{roundtrip_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get(\"roundtrip_id\")));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "61 — PUT и PATCH",
+      "item": [
+        {
+          "name": "PUT полностью обновить задачу",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/{{created_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated by PUT\",\n  \"priority\": 5,\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().is_done).to.eql(false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT ID 0 → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/0",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid body\",\n  \"priority\": 2,\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT отрицательный ID → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/-1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Valid body\",\n  \"priority\": 2,\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT неверное тело → 422",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/{{created_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\",\n  \"priority\": 9,\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH явно вернуть is_done в false",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/{{created_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().is_done).to.eql(false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET перед no-op PATCH",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{created_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.collectionVariables.set(\"before_noop_patch\", JSON.stringify(pm.response.json()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH без изменяемых полей",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/tasks/{{created_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get(\"before_noop_patch\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH с title null",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/tasks/{{created_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.eql(JSON.parse(pm.collectionVariables.get(\"before_noop_patch\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH ID 0 → 422",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/0",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH отрицательный ID → 422",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/-1",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH неверное тело → 422",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks/{{created_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\",\n  \"priority\": 9\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "62 — Удаление",
+      "item": [
+        {
+          "name": "POST создать задачу для удаления",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Delete me\",\n  \"priority\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "pm.collectionVariables.set(\"delete_id\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE удалить задачу → пустой 204",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{delete_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(204);",
+                  "pm.test(\"204 has an empty body\", function () { pm.expect(pm.response.text()).to.eql(\"\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET удалённый ID → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{delete_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Повторный DELETE → 404",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{delete_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE ID 0 → 422",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/tasks/0"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE отрицательный ID → 422",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/tasks/-1"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
