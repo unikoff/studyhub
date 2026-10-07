@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "ae31ab7f-e37b-4561-b232-cad293d59f8d",
     "name": "Planner API",
-    "description": "Локальные сценарии занятий 52–62. Укажите base_url в environment Local и запустите API.",
+    "description": "Локальные сценарии Planner API по занятиям 52–67. Укажите base_url в environment Local и запустите API.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -24,6 +24,31 @@
     {
       "key": "missing_id",
       "value": "999999",
+      "type": "string"
+    },
+    {
+      "key": "workflow_control_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workflow_target_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workflow_total_before",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workflow_open_before",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workflow_done_before",
+      "value": "",
       "type": "string"
     }
   ],
@@ -1107,6 +1132,545 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.response.to.have.status(422);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "67 — Сквозной путь одной задачи",
+      "description": "Запускайте запросы по порядку в environment Local. Сценарий сохраняет baseline stats и фактические id из ответов; после DELETE главной задачи контрольная запись остаётся для проверки CLI и перезапуска.",
+      "item": [
+        {
+          "name": "01. Сохранить baseline N/O/D",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/stats"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const stats = pm.response.json();",
+                  "pm.collectionVariables.set(\"workflow_total_before\", stats.total);",
+                  "pm.collectionVariables.set(\"workflow_open_before\", stats.open);",
+                  "pm.collectionVariables.set(\"workflow_done_before\", stats.done);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02. Создать контрольную задачу",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Lesson 67 control\",\n  \"priority\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "pm.collectionVariables.set(\"workflow_control_id\", String(pm.response.json().id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03. Создать главную задачу",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"  Lesson 67 target  \",\n  \"priority\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "const task = pm.response.json();",
+                  "pm.collectionVariables.set(\"workflow_target_id\", String(task.id));",
+                  "pm.expect(task.title).to.eql(\"Lesson 67 target\");",
+                  "pm.expect(task.is_done).to.eql(false);",
+                  "pm.expect(task).to.have.all.keys(\"id\", \"title\", \"priority\", \"is_done\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04. Прочитать главную задачу",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get(\"workflow_target_id\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05. Прочитать контрольную задачу",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_control_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json().title).to.eql(\"Lesson 67 control\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06. Проверить stats после двух POST",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/stats"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const stats = pm.response.json();",
+                  "pm.expect(stats.total).to.eql(Number(pm.collectionVariables.get(\"workflow_total_before\")) + 2);",
+                  "pm.expect(stats.open).to.eql(Number(pm.collectionVariables.get(\"workflow_open_before\")) + 2);",
+                  "pm.expect(stats.done).to.eql(Number(pm.collectionVariables.get(\"workflow_done_before\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07. Полностью обновить главную задачу",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Reviewed\",\n  \"priority\": 5,\n  \"is_done\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const task = pm.response.json();",
+                  "pm.expect(task.id).to.eql(Number(pm.collectionVariables.get(\"workflow_target_id\")));",
+                  "pm.expect(task.title).to.eql(\"Reviewed\");",
+                  "pm.expect(task.priority).to.eql(5);",
+                  "pm.expect(task.is_done).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08. Подтвердить PUT отдельным GET",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.include({title: \"Reviewed\", priority: 5, is_done: true});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09. Проверить stats после PUT",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/stats"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const stats = pm.response.json();",
+                  "pm.expect(stats.total).to.eql(Number(pm.collectionVariables.get(\"workflow_total_before\")) + 2);",
+                  "pm.expect(stats.open).to.eql(Number(pm.collectionVariables.get(\"workflow_open_before\")) + 1);",
+                  "pm.expect(stats.done).to.eql(Number(pm.collectionVariables.get(\"workflow_done_before\")) + 1);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Вернуть главной задаче is_done=false",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.include({title: \"Reviewed\", priority: 5, is_done: false});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11. Подтвердить PATCH отдельным GET",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.include({title: \"Reviewed\", priority: 5, is_done: false});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12. Проверить список открытых задач",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks?is_done=false"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const ids = pm.response.json().map(task => task.id);",
+                  "pm.expect(ids).to.include(Number(pm.collectionVariables.get(\"workflow_target_id\")));",
+                  "pm.expect(ids).to.include(Number(pm.collectionVariables.get(\"workflow_control_id\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13. Проверить stats после PATCH false",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/stats"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const stats = pm.response.json();",
+                  "pm.expect(stats.total).to.eql(Number(pm.collectionVariables.get(\"workflow_total_before\")) + 2);",
+                  "pm.expect(stats.open).to.eql(Number(pm.collectionVariables.get(\"workflow_open_before\")) + 2);",
+                  "pm.expect(stats.done).to.eql(Number(pm.collectionVariables.get(\"workflow_done_before\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14. Пустой PATCH не меняет задачу",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.include({title: \"Reviewed\", priority: 5, is_done: false});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15. PATCH с null не меняет задачу",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.include({title: \"Reviewed\", priority: 5, is_done: false});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16. Удалить главную задачу",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(204);",
+                  "pm.expect(pm.response.text()).to.eql(\"\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17. GET удалённой задачи → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18. Повторный DELETE → 404",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19. PUT удалённой задачи → 404",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Again\",\n  \"priority\": 2,\n  \"is_done\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20. PATCH удалённой задачи → 404",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_target_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_done\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21. Контрольная задача не изменилась",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/tasks/{{workflow_control_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.expect(pm.response.json()).to.include({title: \"Lesson 67 control\", priority: 1, is_done: false});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22. Проверить финальные stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/stats"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const stats = pm.response.json();",
+                  "pm.expect(stats.total).to.eql(Number(pm.collectionVariables.get(\"workflow_total_before\")) + 1);",
+                  "pm.expect(stats.open).to.eql(Number(pm.collectionVariables.get(\"workflow_open_before\")) + 1);",
+                  "pm.expect(stats.done).to.eql(Number(pm.collectionVariables.get(\"workflow_done_before\")));"
                 ]
               }
             }
