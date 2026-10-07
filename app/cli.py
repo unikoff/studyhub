@@ -1,13 +1,6 @@
 from app.errors import TaskNotFoundError
-from app.operations import (
-    add_task,
-    build_statistics,
-    completion_percent,
-    get_task,
-    list_tasks,
-    mark_task_done,
-    search_tasks,
-)
+from app.operations import add_task, completion_percent, mark_task_done
+from app.services import PlannerService
 from app.validators import normalize_title
 
 
@@ -76,9 +69,11 @@ def handle_add(storage):
         print(format_task(task))
 
 
-def handle_find(storage):
+def handle_find(service):
     try:
-        task = get_task(storage, read_task_id())
+        task = service.get_task(read_task_id())
+    except ValueError as error:
+        print(error)
     except TaskNotFoundError:
         print("Задача не найдена")
     else:
@@ -94,29 +89,29 @@ def handle_done(storage):
         print("Задача выполнена")
 
 
-def handle_search(storage):
+def handle_search(service):
     query = input("Фрагмент названия: ")
     if query.strip() == "":
         print("Введите непустой фрагмент")
         return
-    matches = search_tasks(storage, query)
+    matches = service.search_tasks(query)
     if len(matches) == 0:
         print("Совпадений не найдено")
     else:
         show_tasks(matches)
 
 
-def handle_stats(storage):
-    statistics = build_statistics(storage)
+def handle_stats(service):
+    statistics = service.get_statistics()
     percent = completion_percent(statistics)
-    print(f"Всего: {statistics['total']}")
-    print(f"Выполнено: {statistics['completed']}")
-    print(f"Осталось: {statistics['left']}")
+    print(f"Всего: {statistics['all']}")
+    print(f"Выполнено: {statistics['done']}")
+    print(f"Осталось: {statistics['open']}")
     print(f"Процент выполнения: {percent}%")
 
 
-def handle_list(storage):
-    show_tasks(list_tasks(storage))
+def handle_list(service):
+    show_tasks(service.list_tasks())
 
 
 def show_menu():
@@ -140,6 +135,7 @@ def show_tasks(tasks):
 
 
 def run(storage):
+    service = PlannerService(storage)
     handlers = {
         "add": handle_add,
         "list": handle_list,
@@ -158,5 +154,8 @@ def run(storage):
         if command not in handlers:
             print("Неизвестная команда")
             continue
-        handlers[command](storage)
+        if command in {"add", "done"}:
+            handlers[command](storage)
+        else:
+            handlers[command](service)
     return storage
