@@ -3,40 +3,40 @@ from app.services import PlannerService
 from app.validators import normalize_title
 
 
-def read_title():
+def read_title(read=input, write=print):
     while True:
-        title = normalize_title(input("Название задачи: "))
+        title = normalize_title(read("Название задачи: "))
         if title == "":
-            print("Название не может быть пустым")
+            write("Название не может быть пустым")
             continue
         return title
 
 
-def read_int(prompt):
+def read_int(prompt, read=input, write=print):
     while True:
-        raw_value = input(prompt)
+        raw_value = read(prompt)
         try:
             value = int(raw_value)
         except ValueError:
-            print("Введите целое число")
+            write("Введите целое число")
             continue
         return value
 
 
-def read_priority():
+def read_priority(read=input, write=print):
     while True:
-        priority = read_int("Приоритет от 1 до 5: ")
+        priority = read_int("Приоритет от 1 до 5: ", read, write)
         if 1 <= priority <= 5:
             return priority
-        print("Приоритет должен быть от 1 до 5")
+        write("Приоритет должен быть от 1 до 5")
 
 
-def read_task_id():
+def read_task_id(read=input, write=print):
     while True:
-        task_id = read_int("Номер задачи: ")
+        task_id = read_int("Номер задачи: ", read, write)
         if task_id > 0:
             return task_id
-        print("Номер должен быть положительным")
+        write("Номер должен быть положительным")
 
 
 def format_task(task):
@@ -46,129 +46,128 @@ def format_task(task):
     )
 
 
-def make_trace(operation, prefix):
-    def wrapper(*args, **kwargs):
-        print(f"{prefix} START")
-        result = operation(*args, **kwargs)
-        print(f"{prefix} DONE {result}")
-        return result
-    return wrapper
-
-
-traced_format_task = make_trace(format_task, "TRACE")
-
-
-def handle_add(service):
-    title = read_title()
-    priority = read_priority()
+def handle_add(service, read=input, write=print):
+    title = read_title(read, write)
+    priority = read_priority(read, write)
     try:
         task = service.add_task(title, priority)
     except ValueError as error:
-        print(error)
+        write(error)
     else:
-        print(format_task(task))
+        write(format_task(task))
 
 
-def handle_find(service):
+def handle_find(service, read=input, write=print):
     try:
-        task = service.get_task(read_task_id())
+        task = service.get_task(read_task_id(read, write))
     except ValueError as error:
-        print(error)
+        write(error)
     except TaskNotFoundError:
-        print("Задача не найдена")
+        write("Задача не найдена")
     else:
-        print(format_task(task))
+        write(format_task(task))
 
 
-def handle_done(service):
+def handle_done(service, read=input, write=print):
     try:
-        task = service.mark_done(read_task_id())
+        task = service.mark_done(read_task_id(read, write))
     except ValueError as error:
-        print(error)
+        write(error)
     except TaskNotFoundError:
-        print("Задача не найдена")
+        write("Задача не найдена")
     else:
-        print(f"Задача {task.id} выполнена")
+        write(f"Задача {task.id} выполнена")
 
 
-def handle_delete(service):
+def handle_delete(service, read=input, write=print):
     try:
-        task_id = read_task_id()
+        task_id = read_task_id(read, write)
         service.delete_task(task_id)
     except ValueError as error:
-        print(error)
+        write(error)
     except TaskNotFoundError:
-        print("Задача не найдена")
+        write("Задача не найдена")
     else:
-        print("Задача удалена")
+        write("Задача удалена")
 
 
-def handle_search(service):
-    query = input("Фрагмент названия: ")
+def handle_search(service, read=input, write=print):
+    query = read("Фрагмент названия: ")
     if query.strip() == "":
-        print("Введите непустой фрагмент")
+        write("Введите непустой фрагмент")
         return
     matches = service.search_tasks(query)
     if len(matches) == 0:
-        print("Совпадений не найдено")
+        write("Совпадений не найдено")
     else:
-        show_tasks(matches)
+        show_tasks(matches, write)
 
 
-def handle_stats(service):
+def handle_stats(service, read=input, write=print):
     statistics = service.get_statistics()
     total = statistics["all"]
     percent = 0.0 if total == 0 else round(statistics["done"] / total * 100, 1)
-    print(f"Всего: {total}")
-    print(f"Выполнено: {statistics['done']}")
-    print(f"Осталось: {statistics['open']}")
-    print(f"Процент выполнения: {percent}%")
+    write(f"Всего: {total}")
+    write(f"Выполнено: {statistics['done']}")
+    write(f"Осталось: {statistics['open']}")
+    write(f"Процент выполнения: {percent}%")
 
 
-def handle_list(service):
-    show_tasks(service.list_tasks())
+def handle_list(service, read=input, write=print):
+    show_tasks(service.list_tasks(), write)
 
 
-def show_menu():
-    print()
-    print("StudyHub Planner")
-    print("add - добавить задачу")
-    print("list - показать задачи")
-    print("find - найти задачу по id")
-    print("done - завершить задачу")
-    print("delete - удалить задачу")
-    print("search - искать по названию")
-    print("stats - показать статистику")
-    print("exit - завершить работу")
+def show_menu(write=print):
+    write("")
+    write("StudyHub Planner")
+    write("add - добавить задачу")
+    write("list - показать задачи")
+    write("find - найти задачу по id")
+    write("done - завершить задачу")
+    write("delete - удалить задачу")
+    write("search - искать по названию")
+    write("stats - показать статистику")
+    write("exit - завершить работу")
 
 
-def show_tasks(tasks):
+def show_tasks(tasks, write=print):
     if len(tasks) == 0:
-        print("Список задач пока пуст.")
+        write("Список задач пока пуст.")
         return
     for task in tasks:
-        print(format_task(task))
+        write(format_task(task))
 
 
-def run(service):
-    handlers = {
-        "add": handle_add,
-        "list": handle_list,
-        "find": handle_find,
-        "done": handle_done,
-        "delete": handle_delete,
-        "search": handle_search,
-        "stats": handle_stats,
-    }
+COMMAND_HANDLERS = {
+    "add": handle_add,
+    "list": handle_list,
+    "find": handle_find,
+    "done": handle_done,
+    "delete": handle_delete,
+    "search": handle_search,
+    "stats": handle_stats,
+}
 
+
+def execute_command(service, command, read=input, write=print):
+    normalized = command.strip().lower()
+    if normalized == "exit":
+        write("Работу завершили")
+        return False
+
+    handler = COMMAND_HANDLERS.get(normalized)
+    if handler is None:
+        write("Неизвестная команда")
+        return True
+
+    handler(service, read=read, write=write)
+    return True
+
+
+def run(service, read=input, write=print):
     while True:
-        show_menu()
-        command = input("Команда: ").strip().lower()
-        if command == "exit":
-            print("Работу завершили")
+        show_menu(write)
+        command = read("Команда: ")
+        if not execute_command(service, command, read=read, write=write):
             break
-        if command not in handlers:
-            print("Неизвестная команда")
-            continue
-        handlers[command](service)
     return service
