@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Response, status
 
 from app.errors import TaskNotFoundError
 from app.main import build_service
@@ -92,6 +92,21 @@ def patch_task_endpoint(task_id: int, payload: TaskPatch):
             status_code=404,
             detail="Task not found",
         ) from error
+
+
+@app.delete(
+    "/tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_task_endpoint(task_id: int):
+    try:
+        app.state.planner.delete_task(task_id)
+    except TaskNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/tasks", status_code=status.HTTP_201_CREATED, response_model=TaskRead)
