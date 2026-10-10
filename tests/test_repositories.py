@@ -84,6 +84,25 @@ def test_service_reads_and_writes_through_the_same_json_storage(tmp_path):
     assert service.list_tasks() == [external]
 
 
+def test_failed_done_save_does_not_mutate_the_stored_task(task):
+    inner = MemoryStorage([task])
+
+    class FailingStorage:
+        def load(self):
+            return inner.load()
+
+        def save(self, tasks):
+            raise StorageError("write failed")
+
+    service = build_service(storage=FailingStorage())
+
+    with pytest.raises(StorageError, match="write failed"):
+        service.mark_done(task.id)
+
+    assert task.is_done is False
+    assert inner.load() == [task]
+
+
 def test_repository_can_read_empty_memory_storage():
     repository = JsonTaskRepository(MemoryStorage())
 

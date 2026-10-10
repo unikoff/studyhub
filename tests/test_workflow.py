@@ -1,3 +1,6 @@
+from app.cli import run
+
+
 def test_one_task_workflow_keeps_control_task_and_state_consistent(api_client):
     health = api_client.get("/health")
     assert health.status_code == 200
@@ -104,4 +107,31 @@ def test_one_task_workflow_keeps_control_task_and_state_consistent(api_client):
         "total": 1,
         "open": 1,
         "done": 0,
+    }
+
+
+def test_api_create_cli_done_and_api_read_share_the_same_json_state(
+    api_client, api_service
+):
+    created = api_client.post(
+        "/tasks", json={"title": "Shared workflow", "priority": 3}
+    )
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+
+    commands = iter(("done", str(task_id), "exit"))
+    output = []
+    run(api_service, read=lambda _prompt: next(commands), write=output.append)
+
+    assert any(f"Задача {task_id} выполнена" in line for line in output)
+    assert api_client.get(f"/tasks/{task_id}").json() == {
+        "id": task_id,
+        "title": "Shared workflow",
+        "priority": 3,
+        "is_done": True,
+    }
+    assert api_client.get("/stats").json() == {
+        "total": 1,
+        "open": 0,
+        "done": 1,
     }

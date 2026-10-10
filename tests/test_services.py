@@ -66,9 +66,10 @@ def test_mark_done_saves_once_and_repeated_done_is_idempotent(
     first = planner_service.mark_done(task.id)
     second = planner_service.mark_done(task.id)
 
-    assert first is task
-    assert second is task
-    assert task.is_done is True
+    assert first == Task(1, "Python", 3, is_done=True, tags=["study"])
+    assert second == first
+    assert task.is_done is False
+    assert observed_storage.inner.load()[0].is_done is True
     assert observed_storage.save_calls == 1
 
 

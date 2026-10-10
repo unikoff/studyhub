@@ -4,7 +4,7 @@ from app.models import Task
 
 
 class JsonTaskRepository:
-    """Read Planner tasks through the existing JSON storage."""
+    """Read and change Planner tasks through the existing JSON storage."""
 
     def __init__(self, storage):
         self.storage = storage
@@ -49,3 +49,40 @@ class JsonTaskRepository:
         done = sum(task.is_done for task in tasks)
         total = len(tasks)
         return {"all": total, "open": total - done, "done": done}
+
+    def create(self, title: str, priority: int, tags=None) -> Task:
+        tasks = self.storage.load()
+        task = Task(
+            id=max((item.id for item in tasks), default=0) + 1,
+            title=title,
+            priority=priority,
+            is_done=False,
+            tags=list(tags) if tags is not None else [],
+        )
+        tasks.append(task)
+        self.storage.save(tasks)
+        return task
+
+    def _store_updated_task(self, task_id: int, task: Task) -> Task | None:
+        tasks = self.storage.load()
+        for index, current in enumerate(tasks):
+            if current.id == task_id:
+                tasks[index] = task
+                self.storage.save(tasks)
+                return task
+        return None
+
+    def replace(self, task_id: int, task: Task) -> Task | None:
+        return self._store_updated_task(task_id, task)
+
+    def update(self, task_id: int, task: Task) -> Task | None:
+        return self._store_updated_task(task_id, task)
+
+    def delete(self, task_id: int) -> bool:
+        tasks = self.storage.load()
+        for index, task in enumerate(tasks):
+            if task.id == task_id:
+                del tasks[index]
+                self.storage.save(tasks)
+                return True
+        return False
