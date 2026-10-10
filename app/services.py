@@ -5,9 +5,16 @@ from app.validators import validate_task_id
 
 
 class PlannerService:
-    def __init__(self, storage):
+    def __init__(self, storage=None, repository=None):
+        if storage is not None and repository is not None:
+            raise ValueError("Pass either storage or repository, not both")
+        if storage is None and repository is None:
+            raise ValueError("Pass storage or repository")
+
         self.storage = storage
-        self.repository = JsonTaskRepository(storage)
+        self.repository = (
+            JsonTaskRepository(storage) if repository is None else repository
+        )
 
     def _validate_task_id(self, task_id):
         if type(task_id) is not int:

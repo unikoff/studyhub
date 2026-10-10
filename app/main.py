@@ -1,11 +1,20 @@
+from contextlib import contextmanager
+from collections.abc import Iterator
+
 from app.cli import run
 from app.core.config import load_settings
 from app.errors import StorageError
 from app.services import PlannerService
 from app.storage import JsonStorage
+from app.routers.tasks.crud import SqlTaskRepository
 
 
-def build_service(storage=None, settings=None):
+def build_service(storage=None, settings=None, repository=None):
+    if repository is not None:
+        if storage is not None:
+            raise ValueError("Pass either storage or repository, not both")
+        return PlannerService(repository=repository)
+
     if storage is not None:
         return PlannerService(storage)
 
@@ -13,6 +22,12 @@ def build_service(storage=None, settings=None):
         settings = load_settings()
 
     return PlannerService(JsonStorage(settings.json_path))
+
+
+@contextmanager
+def sql_service_context(session_factory) -> Iterator[PlannerService]:
+    with session_factory() as db:
+        yield build_service(repository=SqlTaskRepository(db))
 
 
 def main():

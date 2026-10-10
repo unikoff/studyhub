@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Annotated
 
 from fastapi import Depends, Query, Request
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models import Task
@@ -10,6 +12,18 @@ from app.services import PlannerService
 
 def get_planner(request: Request) -> PlannerService:
     return request.app.state.planner
+
+
+def get_db(request: Request) -> Iterator[Session]:
+    session_factory = getattr(request.app.state, "session_factory", None)
+    if session_factory is None:
+        raise RuntimeError("SQL session factory is not configured")
+
+    db = session_factory()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def get_settings(request: Request) -> Settings:
