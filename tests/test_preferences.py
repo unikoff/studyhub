@@ -1,4 +1,8 @@
 import pytest
+from fastapi.testclient import TestClient
+
+from app.api import app
+from app.cli import run
 
 
 def test_preferences_returns_default_when_client_version_is_missing(api_client):
@@ -35,37 +39,106 @@ def test_preferences_preserves_client_version_in_body(
     assert "X-Client-Version" not in response.headers
 
 
-def test_preferences_requests_do_not_change_tasks_or_storage(
+def test_cookie_preferences_are_client_local_and_do_not_change_planner(
     api_client, api_service
 ):
-    task = api_service.add_task("Keep task unchanged", 3)
-    before = api_service.storage.path.read_bytes()
+    api_service.add_task("Keep preference isolated", 3)
+    data_path = api_service.storage.path
+    before_data = data_path.read_bytes()
+    before_tasks = api_client.get("/tasks").json()
+    before_stats = api_client.get("/stats").json()
 
-    successful = api_client.get(
-        "/preferences",
-        headers={"X-Client-Version": "1.0"},
-    )
-    assert successful.status_code == 200
-    assert successful.json() == {"view": "compact", "client_version": "1.0"}
-    assert successful.headers["X-Planner-Version"] == "1"
-    assert api_service.storage.path.read_bytes() == before
+    default = api_client.get("/preferences")
+    assert default.status_code == 200
+    assert default.json() == {"view": "compact", "client_version": None}
 
-    response = api_client.get(
-        "/preferences",
-        headers={"X-Client-Version": "v" * 65},
-    )
+    with TestClient(app, follow_redirects=False) as second_client:
+        second_default = second_client.get("/preferences")
+        assert second_default.json() == {
+            "view": "compact",
+            "client_version": None,
+        }
 
-    assert response.status_code == 422
-    assert "X-Planner-Version" not in response.headers
-    assert api_service.storage.path.read_bytes() == before
-    assert api_client.get(f"/tasks/{task.id}").json() == {
-        "id": task.id,
-        "title": "Keep task unchanged",
-        "priority": 3,
-        "is_done": False,
-    }
-    assert api_client.get("/stats").json() == {
-        "total": 1,
-        "open": 1,
-        "done": 0,
-    }
+        selected = api_client.put(
+            "/preferences",
+            json={"view": "detailed"},
+            headers={"X-Client-Version": "web-2"},
+        )
+        assert selected.status_code == 200
+        assert selected.json() == {
+            "view": "detailed",
+            "client_version": "web-2",
+        }
+        assert selected.headers["X-Planner-Version"] == "1"
+        set_cookie = selected.headers["set-cookie"].lower()
+        assert "planner_view=detailed" in set_cookie
+        assert "path=/preferences" in set_cookie
+        assert "httponly" in set_cookie
+        assert "samesite=lax" in set_cookie
+        assert "secure" not in set_cookie
+        assert api_client.cookies.get("planner_view") == "detailed"
+
+        first_read = api_client.get("/preferences")
+        assert first_read.json() == {
+            "view": "detailed",
+            "client_version": None,
+        }
+        assert first_read.headers["X-Planner-Version"] == "1"
+
+        # Another client has its own jar and cannot see the first client's choice.
+        assert second_client.get("/preferences").json() == {
+            "view": "compact",
+            "client_version": None,
+        }
+        second_client.cookies.set(
+            "planner_view", "admin", path="/preferences"
+        )
+        unknown_cookie = second_client.get("/preferences")
+        assert unknown_cookie.status_code == 200
+        assert unknown_cookie.json() == {
+            "view": "compact",
+            "client_version": None,
+        }
+
+        invalid = api_client.put("/preferences", json={"view": "wide"})
+        assert invalid.status_code == 422
+        assert "set-cookie" not in invalid.headers
+        assert api_client.cookies.get("planner_view") == "detailed"
+        assert api_client.get("/preferences").json()["view"] == "detailed"
+
+        deleted = api_client.delete("/preferences")
+        assert deleted.status_code == 204
+        assert deleted.content == b""
+        assert deleted.headers["X-Planner-Version"] == "1"
+        deletion = deleted.headers["set-cookie"].lower()
+        assert "planner_view=" in deletion
+        assert "path=/preferences" in deletion
+        assert "max-age=0" in deletion
+        assert "samesite=lax" in deletion
+        assert api_client.cookies.get("planner_view") is None
+
+        after_delete = api_client.get("/preferences")
+        assert after_delete.status_code == 200
+        assert after_delete.json() == {
+            "view": "compact",
+            "client_version": None,
+        }
+        assert after_delete.headers["X-Planner-Version"] == "1"
+
+    api_client.cookies.set("planner_view", "unexpected", path="/preferences")
+    unknown_cookie = api_client.get("/preferences")
+    assert unknown_cookie.status_code == 200
+    assert unknown_cookie.json()["view"] == "compact"
+    api_client.cookies.clear()
+
+    assert data_path.read_bytes() == before_data
+    assert api_client.get("/tasks").json() == before_tasks
+    assert api_client.get("/stats").json() == before_stats
+
+    commands = iter(("list", "stats", "exit"))
+    output = []
+    run(api_service, read=lambda _prompt: next(commands), write=output.append)
+    rendered = "\n".join(output)
+    assert "Keep preference isolated" in rendered
+    assert "Всего: 1" in rendered
+    assert data_path.read_bytes() == before_data
