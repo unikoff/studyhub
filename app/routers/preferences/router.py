@@ -2,6 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Header, Response, status
 
+from app.core.dependencies import SettingsDep
+
 from .schemas import PreferenceRead, PreferenceView, PreferenceWrite
 
 
@@ -30,6 +32,7 @@ def read_preferences(
 def set_preferences(
     payload: PreferenceWrite,
     response: Response,
+    settings: SettingsDep,
     client_version: Annotated[
         str | None,
         Header(alias="X-Client-Version", max_length=64),
@@ -40,7 +43,7 @@ def set_preferences(
         value=payload.view,
         path="/preferences",
         httponly=True,
-        secure=False,
+        secure=settings.cookie_secure,
         samesite="lax",
     )
     response.headers["X-Planner-Version"] = "1"
@@ -52,8 +55,14 @@ def set_preferences(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
-def reset_preferences(response: Response) -> Response:
-    response.delete_cookie(key="planner_view", path="/preferences")
+def reset_preferences(response: Response, settings: SettingsDep) -> Response:
+    response.delete_cookie(
+        key="planner_view",
+        path="/preferences",
+        secure=settings.cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
     response.headers["X-Planner-Version"] = "1"
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

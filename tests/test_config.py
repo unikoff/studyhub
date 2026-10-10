@@ -14,6 +14,7 @@ from app.storage import MemoryStorage
 def isolated_config(tmp_path, monkeypatch):
     monkeypatch.delenv("JSON_PATH", raising=False)
     monkeypatch.delenv("APP_NAME", raising=False)
+    monkeypatch.delenv("COOKIE_SECURE", raising=False)
     monkeypatch.setattr(config, "ENV_FILE", tmp_path / ".env")
     return tmp_path
 
@@ -23,6 +24,38 @@ def test_load_settings_uses_defaults_when_values_are_absent(isolated_config):
 
     assert settings.json_path == (isolated_config / "data" / "tasks.json").resolve()
     assert settings.app_name == "StudyHub Planner"
+    assert settings.cookie_secure is False
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("true", True),
+        (" TRUE ", True),
+        ("false", False),
+        (" False ", False),
+    ],
+)
+def test_load_settings_parses_cookie_secure(
+    isolated_config, raw_value, expected
+):
+    settings = config.load_settings(
+        environ={"COOKIE_SECURE": raw_value},
+        project_root=isolated_config,
+    )
+
+    assert settings.cookie_secure is expected
+
+
+@pytest.mark.parametrize("raw_value", ["", "   ", "yes"])
+def test_load_settings_rejects_invalid_cookie_secure(
+    isolated_config, raw_value
+):
+    with pytest.raises(ValueError, match="COOKIE_SECURE"):
+        config.load_settings(
+            environ={"COOKIE_SECURE": raw_value},
+            project_root=isolated_config,
+        )
 
 
 def test_load_settings_resolves_relative_path_from_project_root(

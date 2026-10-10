@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JSON_PATH = Path("data/tasks.json")
 DEFAULT_APP_NAME = "StudyHub Planner"
+DEFAULT_COOKIE_SECURE = False
 ENV_FILE = PROJECT_ROOT / ".env"
 
 
@@ -16,6 +17,19 @@ ENV_FILE = PROJECT_ROOT / ".env"
 class Settings:
     json_path: Path
     app_name: str
+    cookie_secure: bool = DEFAULT_COOKIE_SECURE
+
+
+def parse_cookie_secure(raw: str | None) -> bool:
+    if raw is None:
+        return DEFAULT_COOKIE_SECURE
+
+    value = raw.strip().lower()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError("COOKIE_SECURE must be 'true' or 'false'")
 
 
 def load_settings(
@@ -48,4 +62,10 @@ def load_settings(
     else:
         app_name = raw_name
 
-    return Settings(json_path=json_path, app_name=app_name)
+    cookie_secure = parse_cookie_secure(values.get("COOKIE_SECURE"))
+
+    return Settings(
+        json_path=json_path,
+        app_name=app_name,
+        cookie_secure=cookie_secure,
+    )

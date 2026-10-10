@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import Depends, Query, Request
 
+from app.core.config import Settings
 from app.models import Task
 from app.services import PlannerService
 
@@ -11,7 +12,12 @@ def get_planner(request: Request) -> PlannerService:
     return request.app.state.planner
 
 
+def get_settings(request: Request) -> Settings:
+    return request.app.state.settings
+
+
 PlannerDep = Annotated[PlannerService, Depends(get_planner)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @dataclass(frozen=True)
