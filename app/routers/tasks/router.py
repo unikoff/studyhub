@@ -1,11 +1,17 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
+from fastapi import APIRouter, HTTPException, Path, Query, Response, status
 
-from app.core.dependencies import get_planner
+from app.core.dependencies import PlannerDep
 from app.errors import TaskNotFoundError
-from app.services import PlannerService
+
 from .schemas import TaskCreate, TaskPatch, TaskRead, TaskUpdate
+
+
+TaskId = Annotated[int, Path(gt=0)]
+IsDoneFilter = Annotated[bool | None, Query()]
+SortDescFilter = Annotated[bool, Query()]
+TaskLimit = Annotated[int, Query(ge=1, le=50)]
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -32,10 +38,10 @@ def _task_read_data(task):
 
 @router.get("", response_model=list[TaskRead])
 def read_tasks(
-    planner: PlannerService = Depends(get_planner),
-    is_done: bool | None = None,
-    sort_desc: bool = False,
-    limit: int = Query(default=10, ge=1, le=50),
+    planner: PlannerDep,
+    is_done: IsDoneFilter = None,
+    sort_desc: SortDescFilter = False,
+    limit: TaskLimit = 10,
 ):
     tasks = planner.select_tasks(
         is_done=is_done,
@@ -47,8 +53,8 @@ def read_tasks(
 
 @router.get("/{task_id}", response_model=TaskRead)
 def read_task(
-    task_id: Annotated[int, Path(gt=0)],
-    planner: PlannerService = Depends(get_planner),
+    task_id: TaskId,
+    planner: PlannerDep,
 ):
     task = _call_with_task_not_found_as_404(
         planner.get_task, task_id
@@ -58,9 +64,9 @@ def read_task(
 
 @router.put("/{task_id}", response_model=TaskRead)
 def update_task(
-    task_id: Annotated[int, Path(gt=0)],
+    task_id: TaskId,
     payload: TaskUpdate,
-    planner: PlannerService = Depends(get_planner),
+    planner: PlannerDep,
 ):
     task = _call_with_task_not_found_as_404(
         planner.replace_task,
@@ -74,9 +80,9 @@ def update_task(
 
 @router.patch("/{task_id}", response_model=TaskRead)
 def patch_task_endpoint(
-    task_id: Annotated[int, Path(gt=0)],
+    task_id: TaskId,
     payload: TaskPatch,
-    planner: PlannerService = Depends(get_planner),
+    planner: PlannerDep,
 ):
     changes = payload.model_dump(
         exclude_unset=True,
@@ -93,8 +99,8 @@ def patch_task_endpoint(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_task_endpoint(
-    task_id: Annotated[int, Path(gt=0)],
-    planner: PlannerService = Depends(get_planner),
+    task_id: TaskId,
+    planner: PlannerDep,
 ):
     _call_with_task_not_found_as_404(
         planner.delete_task, task_id
@@ -105,7 +111,7 @@ def delete_task_endpoint(
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=TaskRead)
 def create_task(
     payload: TaskCreate,
-    planner: PlannerService = Depends(get_planner),
+    planner: PlannerDep,
 ):
     try:
         task = planner.add_task(

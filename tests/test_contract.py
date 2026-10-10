@@ -243,3 +243,37 @@ def test_openapi_documents_current_contract(api_client):
     assert schemas["TaskPatch"].get("required", []) == []
     assert "201" in document["paths"]["/tasks"]["post"]["responses"]
     assert "204" in document["paths"]["/tasks/{task_id}"]["delete"]["responses"]
+
+    list_operation = document["paths"]["/tasks"]["get"]
+    list_parameters = {
+        parameter["name"]: parameter
+        for parameter in list_operation["parameters"]
+    }
+    assert set(list_parameters) == {"is_done", "sort_desc", "limit"}
+    assert list_parameters["is_done"]["required"] is False
+    assert list_parameters["sort_desc"]["schema"]["default"] is False
+    assert list_parameters["limit"]["schema"]["default"] == 10
+    assert list_parameters["limit"]["schema"]["minimum"] == 1
+    assert list_parameters["limit"]["schema"]["maximum"] == 50
+
+    item_parameters = document["paths"]["/tasks/{task_id}"]["get"]["parameters"]
+    assert [parameter["name"] for parameter in item_parameters] == ["task_id"]
+    assert item_parameters[0]["required"] is True
+    assert item_parameters[0]["schema"]["exclusiveMinimum"] == 0
+
+    for operations in document["paths"].values():
+        for operation in operations.values():
+            assert "planner" not in {
+                parameter["name"] for parameter in operation.get("parameters", [])
+            }
+
+    put_body = document["paths"]["/tasks/{task_id}"]["put"]["requestBody"]
+    patch_body = document["paths"]["/tasks/{task_id}"]["patch"]["requestBody"]
+    assert put_body["required"] is True
+    assert put_body["content"]["application/json"]["schema"]["$ref"] == (
+        "#/components/schemas/TaskUpdate"
+    )
+    assert patch_body["required"] is True
+    assert patch_body["content"]["application/json"]["schema"]["$ref"] == (
+        "#/components/schemas/TaskPatch"
+    )
