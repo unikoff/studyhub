@@ -197,3 +197,33 @@ def test_delete_returns_empty_204_then_get_and_repeat_delete_return_404(
 
 def test_scenarios_do_not_use_the_project_data_file(api_service, tmp_path):
     assert api_service.storage.path == tmp_path / "tasks.json"
+
+
+def test_api_operations_share_the_planner_provider(api_client):
+    created = api_client.post(
+        "/tasks", json={"title": "Provider workflow", "priority": 2}
+    )
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+    path = f"/tasks/{task_id}"
+
+    assert api_client.get(path).json() == created.json()
+    assert api_client.get("/stats").json() == {
+        "total": 1,
+        "open": 1,
+        "done": 0,
+    }
+    assert api_client.get("/tasks/999").status_code == 404
+
+    completed = api_client.put(
+        path,
+        json={"title": "Provider workflow", "priority": 2, "is_done": True},
+    )
+    assert completed.status_code == 200
+    reopened = api_client.patch(path, json={"is_done": False})
+    assert reopened.status_code == 200
+    assert reopened.json()["is_done"] is False
+
+    deleted = api_client.delete(path)
+    assert deleted.status_code == 204
+    assert deleted.content == b""
