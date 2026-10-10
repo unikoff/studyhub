@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from app import main as main_module
+from app.core import config as config_module
 from app.cli import execute_command
 from app.errors import StorageError
 from app.main import build_service
@@ -189,7 +190,9 @@ def test_build_service_uses_injected_storage_without_io():
 
 def test_default_build_selects_json_storage_without_loading_data(tmp_path, monkeypatch):
     data_path = tmp_path / "tasks.json"
-    monkeypatch.setattr(main_module, "DATA_PATH", data_path)
+    monkeypatch.delenv("JSON_PATH", raising=False)
+    monkeypatch.setattr(config_module, "ENV_FILE", tmp_path / ".env")
+    monkeypatch.setattr(config_module, "DEFAULT_JSON_PATH", data_path)
 
     service = main_module.build_service()
 
