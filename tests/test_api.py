@@ -1,4 +1,9 @@
 import pytest
+from fastapi import HTTPException
+
+from app.api import app
+from app.core.dependencies import get_planner
+
 
 def public_task(task):
     return {
@@ -227,3 +232,26 @@ def test_api_operations_share_the_planner_provider(api_client):
     deleted = api_client.delete(path)
     assert deleted.status_code == 204
     assert deleted.content == b""
+
+
+def test_planner_provider_failure_returns_503_without_changes(
+    api_client, api_service
+):
+    task = api_service.add_task("Keep on provider failure", 2)
+    before = api_service.storage.path.read_bytes()
+    previous_overrides = app.dependency_overrides.copy()
+
+    def unavailable_planner():
+        raise HTTPException(status_code=503, detail="Planner unavailable")
+
+    app.dependency_overrides[get_planner] = unavailable_planner
+    try:
+        failed = api_client.get("/tasks")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+
+    assert failed.status_code == 503
+    assert failed.json() == {"detail": "Planner unavailable"}
+    assert api_service.storage.path.read_bytes() == before
+    assert api_client.get("/tasks").json() == [public_task(task)]

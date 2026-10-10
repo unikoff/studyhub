@@ -1,19 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 
-from app.core.dependencies import PlannerDep
+from app.core.dependencies import PlannerDep, get_selected_tasks
 from app.errors import TaskNotFoundError
+from app.models import Task
 
 from .schemas import TaskCreate, TaskPatch, TaskRead, TaskUpdate
 
 
 TaskId = Annotated[int, Path(gt=0)]
-IsDoneFilter = Annotated[bool | None, Query()]
-SortDescFilter = Annotated[bool, Query()]
-TaskLimit = Annotated[int, Query(ge=1, le=50)]
-
-
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
@@ -38,16 +34,8 @@ def _task_read_data(task):
 
 @router.get("", response_model=list[TaskRead])
 def read_tasks(
-    planner: PlannerDep,
-    is_done: IsDoneFilter = None,
-    sort_desc: SortDescFilter = False,
-    limit: TaskLimit = 10,
+    tasks: Annotated[list[Task], Depends(get_selected_tasks)],
 ):
-    tasks = planner.select_tasks(
-        is_done=is_done,
-        sort_desc=sort_desc,
-        limit=limit,
-    )
     return [_task_read_data(task) for task in tasks]
 
 
