@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.main import build_service
-from app.routers.tasks import router as tasks_router
+from app.routers.tasks.router import router as tasks_router
 
 
 app = FastAPI(title="StudyHub Planner")

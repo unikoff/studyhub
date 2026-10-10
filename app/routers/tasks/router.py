@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response, status
 
 from app.errors import TaskNotFoundError
-from app.schemas import TaskCreate, TaskPatch, TaskRead, TaskUpdate
+from .schemas import TaskCreate, TaskPatch, TaskRead, TaskUpdate
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
