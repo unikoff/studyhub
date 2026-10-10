@@ -1,11 +1,13 @@
 from app.errors import TaskNotFoundError
 from app.models import Task
+from app.repositories import JsonTaskRepository
 from app.validators import validate_task_id
 
 
 class PlannerService:
     def __init__(self, storage):
         self.storage = storage
+        self.repository = JsonTaskRepository(storage)
 
     def _find_task(self, tasks, task_id):
         if type(task_id) is not int:
@@ -17,7 +19,7 @@ class PlannerService:
         raise TaskNotFoundError(f"Задача с номером {task_id} не найдена")
 
     def list_tasks(self):
-        return self.storage.load()
+        return self.repository.list()
 
     def select_tasks(
         self,
@@ -25,37 +27,26 @@ class PlannerService:
         sort_desc: bool = False,
         limit: int | None = None,
     ) -> list[Task]:
-        tasks = self.list_tasks()
-
-        if is_done is not None:
-            tasks = [task for task in tasks if task.is_done == is_done]
-
-        tasks = sorted(
-            tasks,
-            key=lambda task: task.id,
-            reverse=sort_desc,
+        return self.repository.select(
+            is_done=is_done,
+            sort_desc=sort_desc,
+            limit=limit,
         )
 
-        if limit is not None:
-            tasks = tasks[:limit]
-
-        return tasks
-
     def get_task(self, task_id):
-        tasks = self.storage.load()
-        return self._find_task(tasks, task_id)
+        if type(task_id) is not int:
+            raise ValueError("Номер задачи должен быть целым числом")
+        task_id = validate_task_id(task_id)
+        task = self.repository.get(task_id)
+        if task is None:
+            raise TaskNotFoundError(f"Задача с номером {task_id} не найдена")
+        return task
 
     def search_tasks(self, query):
-        query = query.strip().lower()
-        if not query:
-            return []
-        return [task for task in self.storage.load() if query in task.title.lower()]
+        return self.repository.search(query)
 
     def get_statistics(self):
-        tasks = self.storage.load()
-        done = sum(task.is_done for task in tasks)
-        total = len(tasks)
-        return {"all": total, "open": total - done, "done": done}
+        return self.repository.statistics()
 
     def add_task(self, title, priority, tags=None):
         tasks = self.storage.load()
