@@ -4,6 +4,7 @@ from app.core.config import load_settings
 from app.core.dependencies import PlannerDep
 from app.main import build_service
 from app.routers.tasks.router import router as tasks_router
+from app.routers.preferences.router import router as preferences_router
 
 
 settings = load_settings()
@@ -11,6 +12,7 @@ app = FastAPI(title=settings.app_name)
 app.state.settings = settings
 app.state.planner = build_service(settings=settings)
 app.include_router(tasks_router)
+app.include_router(preferences_router)
 
 
 @app.get("/health")
