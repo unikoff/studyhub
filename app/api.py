@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 
+from app.core.config import load_settings
 from app.main import build_service
 from app.routers.tasks.router import router as tasks_router
 
 
-app = FastAPI(title="StudyHub Planner")
-app.state.planner = build_service()
+settings = load_settings()
+app = FastAPI(title=settings.app_name)
+app.state.settings = settings
+app.state.planner = build_service(settings=settings)
 app.include_router(tasks_router)
 
 
