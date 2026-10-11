@@ -6,7 +6,7 @@ from app.core.config import load_settings
 from app.errors import StorageError
 from app.services import PlannerService
 from app.storage import JsonStorage
-from app.routers.tasks.crud import SqlTaskRepository
+from app.DBase.repositories import SqlTaskRepository
 
 
 def build_service(storage=None, settings=None, repository=None):

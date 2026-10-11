@@ -13,7 +13,7 @@ from app.core.config import Settings
 from app.main import build_service, sql_service_context
 from app.models import Task
 from app.repositories import JsonTaskRepository
-from app.routers.tasks.crud import SqlTaskRepository
+from app.DBase.repositories import SqlTaskRepository
 from app.storage import JsonStorage, MemoryStorage
 
 
