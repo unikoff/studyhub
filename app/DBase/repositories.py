@@ -34,6 +34,19 @@ class SqlTaskRepository:
         rows = self.session.scalars(statement).all()
         return [task_from_row(row) for row in rows]
 
+    def search(self, query: str) -> list[Task]:
+        query = query.strip().lower()
+        if not query:
+            return []
+
+        statement = (
+            select(TaskRow)
+            .where(func.instr(TaskRow.title_normalized, query) > 0)
+            .order_by(TaskRow.id)
+        )
+        rows = self.session.scalars(statement).all()
+        return [task_from_row(row) for row in rows]
+
     def statistics(self) -> dict[str, int]:
         statement = select(
             func.count(TaskRow.id),

@@ -1089,3 +1089,134 @@ def test_sql_selection_and_statistics_endpoints_keep_api_contract(
     json_stats = api_client.get("/stats")
     assert [task["id"] for task in json_list.json()] == [json_task.id]
     assert json_stats.json() == {"total": 1, "open": 1, "done": 0}
+
+
+def test_sql_search_matches_literal_json_search_contract(sql_database):
+    _engine, session_factory = sql_database
+    tasks = [
+        Task(1, "План задач %_", 2, tags=["one"]),
+        Task(2, "План   задач", 3, tags=["spaces"]),
+        Task(3, "ПЛАН задач %_", 4, is_done=True, tags=["duplicate"]),
+        Task(4, "Plan API", 1),
+        Task(5, "Quote ' inside", 2),
+        Task(6, "План курса", 5),
+    ]
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=task.id,
+                    title=task.title,
+                    priority=task.priority,
+                    is_done=task.is_done,
+                    tags=task.tags.copy(),
+                    title_normalized=task.title.lower(),
+                )
+                for task in tasks
+            ]
+        )
+        session.commit()
+
+    json_repository = JsonTaskRepository(MemoryStorage(tasks))
+    with session_factory() as session:
+        sql_repository = SqlTaskRepository(session)
+        for query in [" ПЛАН ", "%_", "_", "'", "план задач", "  "]:
+            assert sql_repository.search(query) == json_repository.search(query)
+        assert [task.id for task in sql_repository.search("%_")] == [1, 3]
+        assert [task.id for task in sql_repository.search("план задач")] == [1, 3]
+        assert sql_repository.search("  ") == []
+        assert all(
+            isinstance(task, Task) for task in sql_repository.search("план")
+        )
+
+
+def test_sql_search_uses_database_and_empty_query_skips_select(sql_database):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add(
+            TaskRow(
+                id=1,
+                title="Курс 20%_ готов",
+                priority=3,
+                tags=["internal"],
+                title_normalized="курс 20%_ готов",
+            )
+        )
+        session.commit()
+
+    selects = []
+
+    def record_select(_conn, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            selects.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_select)
+    try:
+        with session_factory() as session:
+            repository = SqlTaskRepository(session)
+            assert repository.search("  ") == []
+            assert selects == []
+            found = repository.search("%_")
+            assert [task.id for task in found] == [1]
+            assert found[0].tags == ["internal"]
+    finally:
+        event.remove(engine, "before_cursor_execute", record_select)
+
+    assert len(selects) == 1
+    assert "INSTR" in selects[0].upper()
+    assert "ORDER BY" in selects[0].upper()
+
+
+def test_sql_search_tracks_title_through_create_put_and_patch(
+    sql_database, api_client, api_service
+):
+    _engine, session_factory = sql_database
+    previous_factory = getattr(app.state, "session_factory", None)
+    had_factory = hasattr(app.state, "session_factory")
+    previous_overrides = app.dependency_overrides.copy()
+
+    def get_sql_planner(db=Depends(get_db)):
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
+
+    app.state.session_factory = session_factory
+    app.dependency_overrides[get_planner] = get_sql_planner
+    try:
+        created = api_client.post(
+            "/tasks", json={"title": "ПЛАН старый", "priority": 2}
+        )
+        task_id = created.json()["id"]
+        with session_factory() as session:
+            repository = SqlTaskRepository(session)
+            assert [task.id for task in repository.search("план")] == [task_id]
+
+        replaced = api_client.put(
+            f"/tasks/{task_id}",
+            json={"title": "Курс Python", "priority": 4, "is_done": False},
+        )
+        with session_factory() as session:
+            repository = SqlTaskRepository(session)
+            assert repository.search("план") == []
+            assert [task.id for task in repository.search("КУРС")] == [task_id]
+
+        patched = api_client.patch(f"/tasks/{task_id}", json={"title": "Заметка"})
+        with session_factory() as session:
+            row = session.get(TaskRow, task_id)
+            repository = SqlTaskRepository(session)
+            assert repository.search("курс") == []
+            assert [task.id for task in repository.search("ЗАМЕТКА")] == [task_id]
+            assert row.title_normalized == "заметка"
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        if had_factory:
+            app.state.session_factory = previous_factory
+        else:
+            del app.state.session_factory
+
+    assert created.status_code == 201
+    assert replaced.status_code == patched.status_code == 200
+    json_task = api_service.add_task("JSON default поиск", 1)
+    assert [task.id for task in api_service.search_tasks("ПОИСК")] == [json_task.id]
