@@ -370,3 +370,165 @@ def test_sql_create_rolls_back_when_insert_fails(sql_database):
 
     with factory() as session:
         assert session.scalars(select(TaskRow)).all() == []
+
+
+def test_sql_put_preserves_internal_fields_and_restores_json(
+    sql_database, api_client, api_service
+):
+    _engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=51,
+                    title="Old title",
+                    priority=2,
+                    is_done=True,
+                    tags=["keep", "private"],
+                    title_normalized="old title",
+                ),
+                TaskRow(
+                    id=52,
+                    title="Neighbor",
+                    priority=4,
+                    tags=["neighbor"],
+                    title_normalized="neighbor",
+                ),
+            ]
+        )
+        session.commit()
+
+    previous_factory = getattr(app.state, "session_factory", None)
+    had_factory = hasattr(app.state, "session_factory")
+    previous_overrides = app.dependency_overrides.copy()
+
+    def get_sql_planner(db=Depends(get_db)):
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
+
+    app.state.session_factory = session_factory
+    app.dependency_overrides[get_planner] = get_sql_planner
+    try:
+        response = api_client.put(
+            "/tasks/51",
+            json={"title": "  New title  ", "priority": 5, "is_done": False},
+        )
+        missing = api_client.put(
+            "/tasks/999", json={"title": "Missing", "priority": 1, "is_done": False}
+        )
+        invalid = api_client.put(
+            "/tasks/51", json={"title": "   ", "priority": 1, "is_done": False}
+        )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        if had_factory:
+            app.state.session_factory = previous_factory
+        else:
+            del app.state.session_factory
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": 51,
+        "title": "New title",
+        "priority": 5,
+        "is_done": False,
+    }
+    assert "tags" not in response.json()
+    assert missing.status_code == 404
+    assert invalid.status_code == 422
+
+    with session_factory() as session:
+        changed = session.get(TaskRow, 51)
+        neighbor = session.get(TaskRow, 52)
+        assert (
+            changed.id,
+            changed.title,
+            changed.priority,
+            changed.is_done,
+            changed.tags,
+            changed.title_normalized,
+        ) == (51, "New title", 5, False, ["keep", "private"], "new title")
+        assert (
+            neighbor.id,
+            neighbor.title,
+            neighbor.priority,
+            neighbor.is_done,
+            neighbor.tags,
+            neighbor.title_normalized,
+        ) == (52, "Neighbor", 4, False, ["neighbor"], "neighbor")
+
+    json_task = api_service.add_task("JSON before PUT", 2, tags=["json"])
+    json_response = api_client.put(
+        f"/tasks/{json_task.id}",
+        json={"title": "JSON after PUT", "priority": 3, "is_done": False},
+    )
+    assert json_response.status_code == 200
+    assert json_response.json()["title"] == "JSON after PUT"
+    assert api_service.get_task(json_task.id).tags == ["json"]
+
+
+def test_sql_put_validates_before_update_and_rolls_back_write_failure(
+    sql_database,
+):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add(
+            TaskRow(
+                id=61,
+                title="Original",
+                priority=3,
+                tags=["keep"],
+                title_normalized="original",
+            )
+        )
+        session.commit()
+
+    statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement.lstrip().split(None, 1)[0].upper())
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        with session_factory() as session:
+            planner = build_service(
+                repository=SqlTaskRepository(session),
+                write_scope=session.begin,
+            )
+            with pytest.raises(ValueError):
+                planner.replace_task(
+                    61, title="Invalid", priority=3, is_done="false"
+                )
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+    assert "UPDATE" not in statements
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TRIGGER reject_task_update BEFORE UPDATE ON tasks "
+            "WHEN NEW.title = 'Rejected' "
+            "BEGIN SELECT RAISE(ABORT, 'rejected'); END"
+        )
+
+    with session_factory() as session:
+        planner = build_service(
+            repository=SqlTaskRepository(session),
+            write_scope=session.begin,
+        )
+        with pytest.raises(IntegrityError):
+            planner.replace_task(
+                61, title="Rejected", priority=1, is_done=True
+            )
+
+    with session_factory() as session:
+        row = session.get(TaskRow, 61)
+        assert (
+            row.title,
+            row.priority,
+            row.is_done,
+            row.tags,
+            row.title_normalized,
+        ) == ("Original", 3, False, ["keep"], "original")

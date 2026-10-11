@@ -71,17 +71,19 @@ class PlannerService:
         return task
 
     def replace_task(self, task_id, *, title, priority, is_done):
-        current = self.get_task(task_id)
-        updated = Task(
-            id=current.id,
-            title=title,
-            priority=priority,
-            is_done=is_done,
-            tags=current.tags.copy(),
-        )
-        saved = self.repository.replace(current.id, updated)
-        if saved is None:
-            self._raise_task_not_found(current.id)
+        task_id = self._validate_task_id(task_id)
+        with self.write_scope():
+            current = self.get_task(task_id)
+            updated = Task(
+                id=current.id,
+                title=title,
+                priority=priority,
+                is_done=is_done,
+                tags=current.tags.copy(),
+            )
+            saved = self.repository.replace(current.id, updated)
+            if saved is None:
+                self._raise_task_not_found(current.id)
         return saved
 
     def patch_task(
