@@ -9,7 +9,6 @@ from sqlalchemy.exc import ArgumentError
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_JSON_PATH = Path("data/tasks.json")
 DEFAULT_APP_NAME = "StudyHub Planner"
 DEFAULT_COOKIE_SECURE = False
 DEFAULT_DATABASE_RELATIVE_PATH = Path("data/studyhub.sqlite3")
@@ -28,7 +27,6 @@ DEFAULT_DATABASE_URL = default_database_url(PROJECT_ROOT)
 
 @dataclass
 class Settings:
-    json_path: Path
     app_name: str
     cookie_secure: bool = DEFAULT_COOKIE_SECURE
     database_url: str = DEFAULT_DATABASE_URL
@@ -80,18 +78,6 @@ def load_settings(
     else:
         values = environ
 
-    raw_path = values.get("JSON_PATH")
-    if raw_path is None:
-        raw_path = str(DEFAULT_JSON_PATH)
-    elif not raw_path.strip():
-        raise ValueError("JSON_PATH must not be empty")
-
-    json_path = Path(raw_path)
-    if not json_path.is_absolute():
-        json_path = (project_root / json_path).resolve()
-    if json_path.exists() and json_path.is_dir():
-        raise ValueError("JSON_PATH must point to a file, not a directory")
-
     raw_name = values.get("APP_NAME")
     if raw_name is None:
         app_name = DEFAULT_APP_NAME
@@ -111,7 +97,6 @@ def load_settings(
         database_url = resolve_database_url(raw_database_url, project_root)
 
     return Settings(
-        json_path=json_path,
         app_name=app_name,
         cookie_secure=cookie_secure,
         database_url=database_url,

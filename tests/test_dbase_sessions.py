@@ -16,7 +16,6 @@ def _settings_for(database_path):
         "sqlite", database=database_path.as_posix()
     ).render_as_string(hide_password=False)
     return Settings(
-        json_path=database_path.parent / "tasks.json",
         app_name="Test",
         database_url=database_url,
     )

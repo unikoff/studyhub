@@ -1,8 +1,5 @@
-from contextlib import nullcontext
-
 from app.errors import TaskNotFoundError
 from app.models import Task
-from app.repositories import JsonTaskRepository
 from app.validators import (
     validate_priority,
     validate_tags,
@@ -12,17 +9,9 @@ from app.validators import (
 
 
 class PlannerService:
-    def __init__(self, storage=None, repository=None, write_scope=None):
-        if storage is not None and repository is not None:
-            raise ValueError("Pass either storage or repository, not both")
-        if storage is None and repository is None:
-            raise ValueError("Pass storage or repository")
-
-        self.storage = storage
-        self.repository = (
-            JsonTaskRepository(storage) if repository is None else repository
-        )
-        self.write_scope = write_scope if write_scope is not None else nullcontext
+    def __init__(self, repository, write_scope):
+        self.repository = repository
+        self.write_scope = write_scope
 
     def _validate_task_id(self, task_id):
         if type(task_id) is not int:

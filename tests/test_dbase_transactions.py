@@ -16,7 +16,6 @@ def isolated_database(tmp_path):
         "sqlite", database=database_path.as_posix()
     ).render_as_string(hide_password=False)
     settings = Settings(
-        json_path=tmp_path / "tasks.json",
         app_name="Test",
         database_url=database_url,
     )

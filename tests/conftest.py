@@ -1,29 +1,17 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.engine import URL
 
 from app.api import app
-from app.core.dependencies import get_planner
+from app.core.config import Settings
+from app.DBase.engine import make_engine
+from app.DBase.init_db import initialize_database
+from app.DBase.models import TaskRow
+from app.DBase.repositories import SqlTaskRepository
+from app.DBase.session import make_session_factory
 from app.main import build_service
-from app.storage import JsonStorage
-
 from app.models import Task
-from app.services import PlannerService
-from app.storage import MemoryStorage
-
-
-class ObservedStorage:
-    def __init__(self, inner):
-        self.inner = inner
-        self.load_calls = 0
-        self.save_calls = 0
-
-    def load(self):
-        self.load_calls += 1
-        return self.inner.load()
-
-    def save(self, tasks):
-        self.save_calls += 1
-        self.inner.save(tasks)
 
 
 @pytest.fixture
@@ -32,36 +20,58 @@ def task():
 
 
 @pytest.fixture
-def memory_storage():
-    return MemoryStorage()
+def sql_database(tmp_path):
+    database_path = tmp_path / "planner.sqlite3"
+    database_url = URL.create(
+        "sqlite", database=database_path.as_posix()
+    ).render_as_string(hide_password=False)
+    settings = Settings(app_name="Test Planner", database_url=database_url)
+    initialize_database(settings)
+    engine = make_engine(database_url)
+    try:
+        yield engine, make_session_factory(engine)
+    finally:
+        engine.dispose()
+
+
+class DatabasePlanner:
+    def __init__(self, session_factory, database_path):
+        self.session_factory = session_factory
+        self.database_path = database_path
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            with self.session_factory() as db:
+                service = build_service(SqlTaskRepository(db), db.begin)
+                return getattr(service, name)(*args, **kwargs)
+        return call
+
+    def snapshot(self):
+        with self.session_factory() as db:
+            rows = db.scalars(select(TaskRow).order_by(TaskRow.id)).all()
+            return [
+                (row.id, row.title, row.priority, row.is_done, list(row.tags))
+                for row in rows
+            ]
 
 
 @pytest.fixture
-def observed_storage(memory_storage):
-    return ObservedStorage(memory_storage)
+def api_service(sql_database):
+    _engine, session_factory = sql_database
+    database_path = session_factory.kw["bind"].url.database
+    return DatabasePlanner(session_factory, database_path)
 
 
 @pytest.fixture
-def planner_service(observed_storage):
-    return PlannerService(observed_storage)
-
-
-@pytest.fixture
-def api_service(tmp_path):
-    return build_service(JsonStorage(tmp_path / "tasks.json"))
-
-
-@pytest.fixture
-def api_client(api_service):
+def api_client(api_service, sql_database):
+    _engine, session_factory = sql_database
+    previous_factory = app.state.session_factory
     previous_overrides = app.dependency_overrides.copy()
-
-    def get_test_planner():
-        return api_service
-
-    app.dependency_overrides[get_planner] = get_test_planner
+    app.state.session_factory = session_factory
     try:
         with TestClient(app, follow_redirects=False) as test_client:
             yield test_client
     finally:
+        app.state.session_factory = previous_factory
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous_overrides)

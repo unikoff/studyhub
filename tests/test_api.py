@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from fastapi import HTTPException
 
@@ -70,19 +72,18 @@ def test_read_returns_public_task_without_tags(api_client, api_service):
         ("delete", None),
     ],
 )
-def test_missing_positive_id_returns_404_without_changing_json(
+def test_missing_positive_id_returns_404_without_changing_database(
     api_client, api_service, method, body
 ):
     api_service.add_task("Keep", 2)
-    path = api_service.storage.path
-    before = path.read_bytes()
+    before = api_service.snapshot()
 
     response = getattr(api_client, method)(
         "/tasks/999", **({} if body is None else {"json": body})
     )
 
     assert response.status_code == 404
-    assert path.read_bytes() == before
+    assert api_service.snapshot() == before
 
 
 @pytest.mark.parametrize("task_id", [0, -1])
@@ -95,26 +96,25 @@ def test_missing_positive_id_returns_404_without_changing_json(
         ("delete", None),
     ],
 )
-def test_nonpositive_ids_return_422_without_changing_json(
+def test_nonpositive_ids_return_422_without_changing_database(
     api_client, api_service, task_id, method, body
 ):
     api_service.add_task("Keep", 2)
-    path = api_service.storage.path
-    before = path.read_bytes()
+    before = api_service.snapshot()
 
     response = getattr(api_client, method)(
         f"/tasks/{task_id}", **({} if body is None else {"json": body})
     )
 
     assert response.status_code == 422
-    assert path.read_bytes() == before
+    assert api_service.snapshot() == before
 
 
-def test_non_integer_id_is_422_without_creating_json(api_client, api_service):
+def test_non_integer_id_is_422_without_database_changes(api_client, api_service):
     response = api_client.get("/tasks/not-an-int")
 
     assert response.status_code == 422
-    assert not api_service.storage.path.exists()
+    assert api_service.snapshot() == []
 
 
 def test_put_and_patch_preserve_id_tags_and_explicit_false(api_client, api_service):
@@ -147,7 +147,7 @@ def test_put_and_patch_preserve_id_tags_and_explicit_false(api_client, api_servi
 def test_empty_and_null_patch_do_not_change_or_save(api_client, api_service):
     task = api_service.add_task("Keep", 2, tags=["tag"])
     path = f"/tasks/{task.id}"
-    before_data = api_service.storage.path.read_bytes()
+    before_data = api_service.snapshot()
     expected = public_task(task)
 
     empty = api_client.patch(path, json={})
@@ -155,7 +155,7 @@ def test_empty_and_null_patch_do_not_change_or_save(api_client, api_service):
 
     assert empty.status_code == explicit_null.status_code == 200
     assert empty.json() == explicit_null.json() == expected
-    assert api_service.storage.path.read_bytes() == before_data
+    assert api_service.snapshot() == before_data
 
 
 @pytest.mark.parametrize(
@@ -172,14 +172,14 @@ def test_invalid_payload_does_not_change_state(
     task = api_service.add_task("Keep", 2, tags=["tag"])
     if path.endswith("/1"):
         path = f"/tasks/{task.id}"
-    before_data = api_service.storage.path.read_bytes()
+    before_data = api_service.snapshot()
     before_tasks = api_client.get("/tasks").json()
     before_stats = api_client.get("/stats").json()
 
     response = getattr(api_client, method)(path, json=body)
 
     assert response.status_code == 422
-    assert api_service.storage.path.read_bytes() == before_data
+    assert api_service.snapshot() == before_data
     assert api_client.get("/tasks").json() == before_tasks
     assert api_client.get("/stats").json() == before_stats
 
@@ -200,8 +200,8 @@ def test_delete_returns_empty_204_then_get_and_repeat_delete_return_404(
     assert repeated.json() == {"detail": "Task not found"}
 
 
-def test_scenarios_do_not_use_the_project_data_file(api_service, tmp_path):
-    assert api_service.storage.path == tmp_path / "tasks.json"
+def test_api_scenarios_use_an_isolated_sqlite_database(api_service, tmp_path):
+    assert Path(api_service.database_path) == tmp_path / "planner.sqlite3"
 
 
 def test_api_operations_share_the_planner_provider(api_client):
@@ -238,7 +238,7 @@ def test_planner_provider_failure_returns_503_without_changes(
     api_client, api_service
 ):
     task = api_service.add_task("Keep on provider failure", 2)
-    before = api_service.storage.path.read_bytes()
+    before = api_service.snapshot()
     previous_overrides = app.dependency_overrides.copy()
 
     def unavailable_planner():
@@ -253,5 +253,5 @@ def test_planner_provider_failure_returns_503_without_changes(
 
     assert failed.status_code == 503
     assert failed.json() == {"detail": "Planner unavailable"}
-    assert api_service.storage.path.read_bytes() == before
+    assert api_service.snapshot() == before
     assert api_client.get("/tasks").json() == [public_task(task)]

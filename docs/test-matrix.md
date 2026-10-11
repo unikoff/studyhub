@@ -1,22 +1,12 @@
 # Матрица проверок
 
-| Риск | Уровень | Проверка в проекте | Наблюдаемый результат |
-|---|---|---|---|
-| Некорректные поля, изменение названия/приоритета, tags и представление Task | Unit | `tests/test_models.py` | Ошибочные значения дают ожидаемый `ValueError`; невалидное изменение не портит прежнее состояние |
-| Потеря или неожиданное разделение состояния MemoryStorage | Unit | `tests/test_storage.py` | Входной и возвращённый контейнеры независимы; вложенные Task остаются общими ссылками по договору |
-| Операция сервиса меняет не то состояние или сохраняет отказ | Unit | `tests/test_services.py` | Add/select/replace/patch/done/delete согласованы с состоянием; чтение, no-op и ошибки не вызывают лишний `save` |
-| Старый JSON перестал загружаться после добавления tags | Integration | `tests/test_persistence.py` | Запись без tags восстанавливает Task с пустым списком и не переписывается при чтении |
-| Файловое состояние теряется при перезапуске | Integration | `tests/test_persistence.py` | Новый `PlannerService` на том же `tmp_path` восстанавливает id, поля и статус |
-| Неизвестный id изменяет сохранённый набор | Integration | `tests/test_persistence.py` | `TaskNotFoundError`, исходный JSON не меняется |
-| Неверная JSON-схема или ошибка файловой системы маскируется под пустую базу | Integration | `tests/test_persistence.py` | `StorageError`; исходные данные не переписываются |
-| Команда показывает неверный ответ, меняет не те данные или сохраняет лишний раз | CLI regression | `tests/test_cli.py` | Сообщения, состояние Task и количество вызовов `save` соответствуют действию |
-| Сборка делает IO или импорт запускает меню | CLI boundary | `tests/test_cli.py` | Переданный storage не вызывается при сборке; импорт без вывода; известная команда получает свой ресурс |
-| HTTP API contract | Integration | `tests/test_api.py` | Маршруты, публичная схема, ошибки 404/422, PUT/PATCH и DELETE проверяются через ASGI без рабочей JSON-базы |
-| Несогласованность операций в одном жизненном цикле задачи | Workflow integration | `tests/test_workflow.py` | Создание, чтение, PUT/PATCH, отказ, удаление и stats проходят через один TestClient и изолированный JsonStorage |
-| SQL readiness rehearsal между интерфейсами | Workflow integration | `tests/test_sql_repository.py::test_readiness_rehearsal_imports_copy_and_shares_sql_between_api_and_cli` | Копия JSON импортируется в пустую временную SQLite; API и CLI используют её через отдельные закрытые Session, а независимое чтение подтверждает общее состояние |
-| Штатные API и CLI используют одну SQL-базу | Workflow integration | `tests/test_config.py::test_api_and_cli_share_loaded_settings_and_sql` | API создаёт задачу в изолированной базе; CLI находит её и читает статистику через новую Session |
-| Чистый clone может создать SQLite в отсутствующем каталоге data | Integration | `tests/test_dbase_sessions.py::test_initialize_database_creates_missing_parent_directory` | Инициализация создаёт каталог и таблицу без ручной подготовки директорий |
+| Риск | Слой | Проверка | Ожидаемый результат |
+| --- | --- | --- | --- |
+| Неверная SQL-модель или отображение задачи | Unit / integration | `tests/test_dbase_models.py`, `tests/test_dbase_read_mapping.py` | Ограничения таблицы и преобразование ORM-строк в `Task` соответствуют контракту |
+| Ошибка CRUD, фильтрации или поиска | Repository / service | `tests/test_sql_repository.py` | Операции, сортировка, фильтры, лимит, статистика и поиск согласованы с контрактом Planner |
+| Несоответствие HTTP-контракта | API integration | `tests/test_api.py`, `tests/test_contract.py` | Статусы, схема ответов, валидация и отсутствие побочных изменений проверяются через TestClient |
+| Разделение API и CLI состояния | Workflow integration | `tests/test_workflow.py`, `tests/test_sql_repository.py` | Обе границы читают и меняют одну изолированную SQLite-базу |
+| Незакрытая транзакция или сессия | Database integration | `tests/test_dbase_sessions.py`, `tests/test_dbase_transactions.py` | Сессии закрываются, изменения коммитятся или откатываются в ожидаемых границах |
+| Ошибка или потеря исходного JSON-снимка при импорте | Import integration | `tests/test_import_tasks.py` | Импортер валидирует источник, записывает только в пустую БД и оставляет JSON байт-в-байт неизменным |
 
-`tests/conftest.py` предоставляет каждому тесту новые Task, MemoryStorage и `PlannerService` по умолчанию. Параметризованные случаи проверяют варианты одного правила; файловые сценарии используют отдельные пути `tmp_path`. Пользовательский `data/tasks.json` не является фикстурой.
-
-Запуск полного набора из корня: `python -m pytest -q`.
+Фикстуры создают отдельную временную SQLite-базу на тест. Rehearsal импорта копирует `data/tasks.json` в `tmp_path`; источник не изменяется и не используется как тестовая база. JSON поддерживается только для одноразового импорта снимка, не как backend приложения.

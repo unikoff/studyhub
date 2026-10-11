@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -54,7 +55,6 @@ def test_cookie_secure_policy_comes_from_settings(
     tmp_path, cookie_secure, base_url
 ):
     settings = Settings(
-        json_path=tmp_path / "tasks.json",
         app_name="Test Planner",
         cookie_secure=cookie_secure,
     )
@@ -114,12 +114,10 @@ def test_cookie_preferences_are_client_local_and_do_not_change_planner(
     api_client, api_service
 ):
     api_service.add_task("Keep preference isolated", 3)
-    data_path = api_service.storage.path
-    before_data = data_path.read_bytes()
+    before_data = api_service.snapshot()
     before_tasks = api_client.get("/tasks").json()
     before_stats = api_client.get("/stats").json()
-    configured_json_path = app.state.settings.json_path
-    cookie_selected_path = data_path.with_name("cookie-selected.json")
+    cookie_selected_path = api_service.database_path + ".cookie-selected"
 
     default = api_client.get("/preferences")
     assert default.status_code == 200
@@ -204,11 +202,10 @@ def test_cookie_preferences_are_client_local_and_do_not_change_planner(
     unknown_cookie = api_client.get("/preferences")
     assert unknown_cookie.status_code == 200
     assert unknown_cookie.json()["view"] == "compact"
-    assert app.state.settings.json_path == configured_json_path
-    assert not cookie_selected_path.exists()
+    assert not Path(cookie_selected_path).exists()
     api_client.cookies.clear()
 
-    assert data_path.read_bytes() == before_data
+    assert api_service.snapshot() == before_data
     assert api_client.get("/tasks").json() == before_tasks
     assert api_client.get("/stats").json() == before_stats
 
@@ -222,4 +219,4 @@ def test_cookie_preferences_are_client_local_and_do_not_change_planner(
     rendered = "\n".join(output)
     assert "Keep preference isolated" in rendered
     assert "Всего: 1" in rendered
-    assert data_path.read_bytes() == before_data
+    assert api_service.snapshot() == before_data

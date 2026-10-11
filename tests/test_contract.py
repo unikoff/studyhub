@@ -82,14 +82,14 @@ def test_patch_omitted_and_null_fields_do_not_change_or_save(
 ):
     task = api_service.add_task("Keep", 3)
     path = f"/tasks/{task.id}"
-    before_bytes = api_service.storage.path.read_bytes()
+    before_snapshot = api_service.snapshot()
     before_task = api_client.get(path).json()
 
     response = api_client.patch(path, json=payload)
 
     assert response.status_code == 200
     assert response.json() == before_task
-    assert api_service.storage.path.read_bytes() == before_bytes
+    assert api_service.snapshot() == before_snapshot
 
 
 def test_patch_applies_false_and_preserves_other_fields(api_client, api_service):
@@ -126,14 +126,14 @@ def test_patch_rejects_invalid_title(api_client, api_service):
         ("patch", {"title": ""}),
     ],
 )
-def test_invalid_write_keeps_task_stats_and_json_unchanged(
+def test_invalid_write_keeps_task_stats_and_database_unchanged(
     api_client, api_service, method, payload
 ):
     task = api_service.add_task("Keep", 2)
     path = f"/tasks/{task.id}"
     before_task = api_client.get(path).json()
     before_stats = api_client.get("/stats").json()
-    before_bytes = api_service.storage.path.read_bytes()
+    before_snapshot = api_service.snapshot()
     request_path = "/tasks" if method == "post" else path
 
     response = getattr(api_client, method)(request_path, json=payload)
@@ -141,7 +141,7 @@ def test_invalid_write_keeps_task_stats_and_json_unchanged(
     assert response.status_code == 422
     assert api_client.get(path).json() == before_task
     assert api_client.get("/stats").json() == before_stats
-    assert api_service.storage.path.read_bytes() == before_bytes
+    assert api_service.snapshot() == before_snapshot
 
 
 @pytest.mark.parametrize(
@@ -153,18 +153,18 @@ def test_invalid_write_keeps_task_stats_and_json_unchanged(
         ("delete", None),
     ],
 )
-def test_missing_valid_id_returns_404_without_upsert(
+def test_missing_valid_id_returns_404_without_creating_rows(
     api_client, api_service, method, payload
 ):
     existing = api_service.add_task("Existing", 2)
     missing_id = existing.id + 10
-    before_bytes = api_service.storage.path.read_bytes()
+    before_snapshot = api_service.snapshot()
     kwargs = {} if payload is None else {"json": payload}
 
     response = getattr(api_client, method)(f"/tasks/{missing_id}", **kwargs)
 
     assert response.status_code == 404
-    assert api_service.storage.path.read_bytes() == before_bytes
+    assert api_service.snapshot() == before_snapshot
     assert api_client.get("/tasks").json() == [
         {
             "id": existing.id,
@@ -190,7 +190,7 @@ def test_invalid_limit_returns_422(api_client, limit):
     assert _error_field(response) == "limit"
 
 
-def test_query_defaults_and_filter_sort_limit_do_not_change_source(
+def test_query_defaults_and_filter_sort_limit_do_not_change_database(
     api_client, api_service
 ):
     created = [
@@ -200,7 +200,7 @@ def test_query_defaults_and_filter_sort_limit_do_not_change_source(
     all_ids = [task.id for task in created]
     open_ids = [task.id for task in created if task.id != created[2].id]
     before_stats = api_client.get("/stats").json()
-    before_bytes = api_service.storage.path.read_bytes()
+    before_snapshot = api_service.snapshot()
 
     defaults = api_client.get("/tasks")
     assert [task["id"] for task in defaults.json()] == all_ids[:10]
@@ -217,7 +217,7 @@ def test_query_defaults_and_filter_sort_limit_do_not_change_source(
         "/tasks", params={"sort_desc": True, "limit": 1}
     ).json()] == sorted(all_ids, reverse=True)[:1]
     assert api_client.get("/stats").json() == before_stats
-    assert api_service.storage.path.read_bytes() == before_bytes
+    assert api_service.snapshot() == before_snapshot
 
 
 @pytest.mark.parametrize("limit", [1, 50])

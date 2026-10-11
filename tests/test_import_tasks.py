@@ -9,13 +9,12 @@ from app.DBase.import_tasks import (
     SnapshotImportError,
     import_snapshot,
     main,
+    load_snapshot,
 )
 from app.DBase.init_db import initialize_database
 from app.DBase.models import TaskRow
 from app.DBase.session import make_session_factory
 from app.core.config import Settings
-from app.main import build_service
-from app.storage import JsonStorage
 
 
 @pytest.fixture
@@ -25,7 +24,6 @@ def import_database(tmp_path):
         "sqlite", database=database_path.as_posix()
     ).render_as_string(hide_password=False)
     settings = Settings(
-        json_path=tmp_path / "tasks.json",
         app_name="Test",
         database_url=database_url,
     )
@@ -43,7 +41,7 @@ def write_snapshot(path, records):
     )
 
 
-def test_cli_imports_old_and_current_records_and_keeps_json_usable(
+def test_cli_imports_old_and_current_records_and_preserves_source(
     tmp_path, import_database, capsys
 ):
     _engine, database_url, session_factory = import_database
@@ -91,8 +89,7 @@ def test_cli_imports_old_and_current_records_and_keeps_json_usable(
             (9, "Новая задача", 2, False, ["sql", "готово"], "новая задача"),
         ]
 
-    json_planner = build_service(JsonStorage(source))
-    assert [task.id for task in json_planner.list_tasks()] == [5, 9]
+    assert [task.id for task in load_snapshot(source)] == [5, 9]
 
 
 def test_empty_list_is_a_valid_snapshot(tmp_path, import_database):

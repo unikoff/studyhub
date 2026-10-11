@@ -112,7 +112,7 @@ def test_one_task_workflow_keeps_control_task_and_state_consistent(api_client):
     }
 
 
-def test_api_create_cli_done_and_api_read_share_the_same_json_state(
+def test_api_create_cli_done_and_api_read_share_the_same_sql_state(
     api_client, api_service
 ):
     created = api_client.post(

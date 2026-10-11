@@ -1,227 +1,101 @@
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
+
+import pytest
+from sqlalchemy import select
 import subprocess
 import sys
 
-import pytest
-
-from app import main as main_module
-from app.core import config as config_module
 from app.cli import execute_command, run
-from app.errors import StorageError
-from app.main import build_service
-from app.models import Task
-from app.services import PlannerService
-from app.storage import JsonStorage, MemoryStorage
+from app.main import sql_service_context
+from app.DBase.models import TaskRow
 
 
-class ObservedStorage:
-    def __init__(self, inner):
-        self.inner = inner
-        self.events = []
-
-    def load(self):
-        self.events.append("load")
-        return self.inner.load()
-
-    def save(self, tasks):
-        self.events.append("save")
-        return self.inner.save(tasks)
-
-
-class FailingStorage(ObservedStorage):
-    def __init__(self, inner, fail_on):
-        super().__init__(inner)
-        self.fail_on = fail_on
-
-    def load(self):
-        self.events.append("load")
-        if self.fail_on == "load":
-            raise StorageError("ошибка чтения")
-        return self.inner.load()
-
-    def save(self, tasks):
-        self.events.append("save")
-        if self.fail_on == "save":
-            raise StorageError("ошибка записи")
-        return self.inner.save(tasks)
-
-
-def make_reader(answers):
-    pending = list(answers)
-
-    def read(_prompt):
-        return pending.pop(0)
-
-    return read
-
-
-def run_command(storage, command, answers=()):
-    messages = []
-    service = PlannerService(storage)
-    keep_running = execute_command(
-        lambda: nullcontext(service),
-        command,
-        read=make_reader(answers),
-        write=messages.append,
-    )
-    return service, keep_running, messages
-
-
-@pytest.mark.parametrize(
-    "command, answers, expected_text",
-    [
-        ("add", ["Новая задача", "2"], "новая задача"),
-        ("done", ["1"], "выполнена"),
-        ("delete", ["1"], "удалена"),
-    ],
-)
-def test_mutating_commands_save_once_and_change_state(
-    command, answers, expected_text
-):
-    storage = ObservedStorage(MemoryStorage([Task(1, "Python", 3)]))
-
-    _, keep_running, messages = run_command(storage, command, answers)
-
-    tasks = storage.inner.load()
-    assert keep_running is True
-    assert storage.events.count("save") == 1
-    assert expected_text in " ".join(messages).casefold()
-    if command == "add":
-        assert len(tasks) == 2
-        assert tasks[1].title == "Новая задача"
-        assert tasks[1].priority == 2
-    elif command == "done":
-        assert len(tasks) == 1
-        assert tasks[0].is_done is True
-    else:
-        assert tasks == []
-
-
-@pytest.mark.parametrize(
-    "command, answers, expected_text",
-    [
-        ("list", [], "python"),
-        ("find", ["1"], "python"),
-        ("search", ["Pyth"], "python"),
-        ("stats", [], "всего: 1"),
-    ],
-)
-def test_read_commands_show_result_without_saving(command, answers, expected_text):
-    storage = ObservedStorage(MemoryStorage([Task(1, "Python", 3)]))
-
-    _, keep_running, messages = run_command(storage, command, answers)
-
-    assert keep_running is True
-    assert expected_text in " ".join(messages).casefold()
-    assert "save" not in storage.events
-
-
-def test_exit_and_unknown_command_have_distinct_session_results():
-    storage = ObservedStorage(MemoryStorage())
-
-    _, keep_running, messages = run_command(storage, "exit")
-
-    assert keep_running is False
-    assert any("заверш" in message.casefold() for message in messages)
-    assert "save" not in storage.events
-
-    _, keep_running, messages = run_command(storage, "unknown")
-
-    assert keep_running is True
-    assert any("неизвест" in message.casefold() for message in messages)
-    assert "save" not in storage.events
-
-
-def test_invalid_input_unknown_id_and_repeated_done_do_not_save():
-    storage = ObservedStorage(MemoryStorage([Task(1, "Python", 3, is_done=True)]))
-    before = [task.to_dict() for task in storage.inner.load()]
-    service = PlannerService(storage)
-    messages = []
-
-    execute_command(
-        lambda: nullcontext(service),
-        "find",
-        read=make_reader(["not-an-int", "999"]),
-        write=messages.append,
-    )
-    execute_command(
-        lambda: nullcontext(service),
-        "done",
-        read=make_reader(["1"]),
-        write=messages.append,
-    )
-
-    assert "save" not in storage.events
-    assert [task.to_dict() for task in storage.inner.load()] == before
-    assert any("целое число" in message.casefold() for message in messages)
-    assert any("не найдена" in message.casefold() for message in messages)
-
-
-@pytest.mark.parametrize(
-    "fail_on, command, answers",
-    [
-        ("load", "list", []),
-        ("save", "add", ["Новая задача", "3"]),
-    ],
-)
-def test_storage_error_propagates_without_success_message(fail_on, command, answers):
-    storage = FailingStorage(MemoryStorage(), fail_on=fail_on)
-    service = PlannerService(storage)
-    messages = []
-
-    with pytest.raises(StorageError):
-        execute_command(
-            lambda: nullcontext(service),
-            command,
-            read=make_reader(answers),
-            write=messages.append,
+def seed_task(session_factory, *, done=False):
+    with session_factory() as session:
+        row = TaskRow(
+            title="Python", priority=3, is_done=done, tags=[],
+            title_normalized="python",
         )
-
-    assert not any("добавлена" in message.casefold() for message in messages)
-
-
-def test_build_service_uses_injected_storage_without_io():
-    storage = ObservedStorage(MemoryStorage())
-
-    service = build_service(storage)
-
-    assert service.storage is storage
-    assert storage.events == []
+        session.add(row)
+        session.commit()
+        return row.id
 
 
-def test_default_build_selects_json_storage_without_loading_data(tmp_path, monkeypatch):
-    data_path = tmp_path / "tasks.json"
-    monkeypatch.delenv("JSON_PATH", raising=False)
-    monkeypatch.setattr(config_module, "ENV_FILE", tmp_path / ".env")
-    monkeypatch.setattr(config_module, "DEFAULT_JSON_PATH", data_path)
+def test_mutating_commands_change_sql_state(sql_database):
+    _engine, session_factory = sql_database
+    task_id = seed_task(session_factory)
+    commands = iter(("done", str(task_id), "exit"))
+    output = []
 
-    service = main_module.build_service()
-
-    assert isinstance(service.storage, JsonStorage)
-    assert service.storage.path == data_path
-    assert not data_path.exists()
-
-
-def test_import_main_does_not_start_cli():
-    result = subprocess.run(
-        [sys.executable, "-c", "import app.main"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=True,
+    run(
+        lambda: sql_service_context(session_factory),
+        read=lambda _prompt: next(commands),
+        write=output.append,
     )
 
-    assert result.stdout == ""
-    assert result.stderr == ""
+    with session_factory() as session:
+        row = session.get(TaskRow, task_id)
+        assert row.is_done is True
+    assert any(f"Задача {task_id} выполнена" in line for line in output)
 
 
-def test_cli_opens_context_only_for_known_commands_and_closes_on_error():
+def test_add_command_persists_normalized_task(sql_database):
+    _engine, session_factory = sql_database
+    commands = iter(("add", "  Новая задача  ", "2", "exit"))
+    output = []
+
+    run(
+        lambda: sql_service_context(session_factory),
+        read=lambda _prompt: next(commands),
+        write=output.append,
+    )
+
+    with session_factory() as session:
+        rows = session.scalars(select(TaskRow)).all()
+        assert [(row.title, row.priority, row.is_done) for row in rows] == [
+            ("Новая задача", 2, False)
+        ]
+    assert any("Новая задача" in line for line in output)
+
+
+def test_read_commands_show_sql_result(sql_database):
+    _engine, session_factory = sql_database
+    seed_task(session_factory, done=True)
+    commands = iter(("list", "stats", "exit"))
+    output = []
+
+    run(
+        lambda: sql_service_context(session_factory),
+        read=lambda _prompt: next(commands),
+        write=output.append,
+    )
+
+    rendered = "\n".join(output)
+    assert "Python" in rendered
+    assert "Всего: 1" in rendered
+    assert "Выполнено: 1" in rendered
+
+
+def test_cli_unknown_and_exit_do_not_open_service_context():
     opened = []
-    closed = []
 
     @contextmanager
     def service_scope():
         opened.append(True)
+        yield object()
+
+    messages = []
+    assert execute_command(service_scope, "unknown", write=messages.append)
+    assert not execute_command(service_scope, "exit", write=messages.append)
+    assert opened == []
+    assert any("неизвест" in message.casefold() for message in messages)
+
+
+def test_cli_context_closes_when_service_fails():
+    closed = []
+
+    @contextmanager
+    def service_scope():
         try:
             class BrokenService:
                 def list_tasks(self):
@@ -231,43 +105,15 @@ def test_cli_opens_context_only_for_known_commands_and_closes_on_error():
         finally:
             closed.append(True)
 
-    messages = []
-    assert execute_command(service_scope, " unknown ", write=messages.append)
-    assert not execute_command(service_scope, " EXIT ", write=messages.append)
-    assert opened == closed == []
-    assert any("неизвест" in message.casefold() for message in messages)
-
     with pytest.raises(RuntimeError, match="service failed"):
-        execute_command(service_scope, "list", write=messages.append)
-    assert opened == closed == [True]
-    assert not any("Список задач" in message for message in messages)
+        execute_command(service_scope, "list", write=lambda _message: None)
+    assert closed == [True]
 
 
-def test_cli_run_uses_a_fresh_context_for_each_recognized_command():
-    storage = ObservedStorage(MemoryStorage([Task(1, "Python", 3)]))
-    service = PlannerService(storage)
-    contexts = []
-    finalized = []
-    answers = iter(("list", "stats", "unknown", "exit"))
-    messages = []
-
-    @contextmanager
-    def service_scope():
-        context_id = len(contexts) + 1
-        contexts.append(context_id)
-        try:
-            yield service
-        finally:
-            finalized.append(context_id)
-
-    result = run(
-        service_scope,
-        read=lambda _prompt: next(answers),
-        write=messages.append,
+def test_import_main_does_not_start_cli():
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.main"],
+        capture_output=True, text=True, timeout=10, check=True,
     )
-
-    assert result is None
-    assert contexts == finalized == [1, 2]
-    assert any("Python" in message for message in messages)
-    assert any("Всего: 1" in message for message in messages)
-    assert any("неизвест" in message.casefold() for message in messages)
+    assert result.stdout == ""
+    assert result.stderr == ""

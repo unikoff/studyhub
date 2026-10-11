@@ -1,4 +1,7 @@
 from contextlib import contextmanager
+import os
+import subprocess
+import sys
 import json
 from pathlib import Path
 import shutil
@@ -21,9 +24,7 @@ from app.DBase.session import make_session_factory
 from app.core.config import Settings
 from app.main import build_service, sql_service_context
 from app.models import Task
-from app.repositories import JsonTaskRepository
 from app.DBase.repositories import SqlTaskRepository
-from app.storage import JsonStorage, MemoryStorage
 
 
 @pytest.fixture
@@ -33,7 +34,6 @@ def sql_database(tmp_path):
         "sqlite", database=database_path.as_posix()
     ).render_as_string(hide_password=False)
     settings = Settings(
-        json_path=tmp_path / "tasks.json",
         app_name="Test",
         database_url=database_url,
     )
@@ -112,9 +112,6 @@ def test_sql_repository_maps_ordered_rows_and_get_to_tasks_after_close(
     assert tasks == expected
     assert existing == tasks[1]
     assert missing is None
-    json_repository = JsonTaskRepository(MemoryStorage(expected))
-    assert tasks == json_repository.list()
-    assert existing == json_repository.get(8)
 
     tasks[1].tags.append("local-only")
     assert tasks[0].tags == ["review"]
@@ -126,7 +123,7 @@ def test_sql_repository_maps_ordered_rows_and_get_to_tasks_after_close(
         assert [row.tags for row in rows] == [["review"], ["sql", "reading"]]
 
 
-def test_sql_get_provider_uses_a_request_session_and_restores_json(
+def test_sql_get_provider_uses_a_request_session(
     sql_database, api_client, api_service
 ):
     engine, _session_factory = sql_database
@@ -158,7 +155,6 @@ def test_sql_get_provider_uses_a_request_session_and_restores_json(
     previous_factory = getattr(app.state, "session_factory", None)
     had_factory = hasattr(app.state, "session_factory")
     previous_overrides = app.dependency_overrides.copy()
-    json_task = api_service.add_task("JSON task", 2)
 
     def get_sql_planner(db=Depends(get_db)):
         return build_service(
@@ -190,9 +186,6 @@ def test_sql_get_provider_uses_a_request_session_and_restores_json(
     assert missing.status_code == 404
     assert len(created_sessions) == 2
     assert all(session.was_closed for session in created_sessions)
-    json_response = api_client.get(f"/tasks/{json_task.id}")
-    assert json_response.status_code == 200
-    assert json_response.json()["title"] == "JSON task"
 
 
 def test_sql_service_context_closes_session_after_success_and_error(sql_database):
@@ -236,7 +229,7 @@ def test_sql_service_context_closes_session_after_success_and_error(sql_database
     assert created[-1].was_closed
 
 
-def test_sql_post_uses_generated_id_and_restores_json_provider(
+def test_sql_post_uses_generated_id_and_sql_provider(
     sql_database, api_client, api_service
 ):
     engine, session_factory = sql_database
@@ -290,8 +283,6 @@ def test_sql_post_uses_generated_id_and_restores_json_provider(
     assert public_data["is_done"] is False
     assert invalid.status_code == 422
     assert missing_priority.status_code == 422
-    assert not api_service.storage.path.exists()
-
     with session_factory() as session:
         created = session.get(TaskRow, public_data["id"])
         assert created is not None
@@ -304,12 +295,12 @@ def test_sql_post_uses_generated_id_and_restores_json_provider(
         ) == ("New SQL task", 3, False, [], "new sql task")
         assert session.get(TaskRow, 40).tags == ["history"]
 
-    json_response = api_client.post(
-        "/tasks", json={"title": "JSON task", "priority": 2}
+    follow_up = api_client.post(
+        "/tasks", json={"title": "Follow-up SQL task", "priority": 2}
     )
-    assert json_response.status_code == 201
-    assert json_response.json()["id"] == 1
-    assert api_service.get_task(1).title == "JSON task"
+    assert follow_up.status_code == 201
+    assert follow_up.json()["id"] == 42
+    assert api_service.get_task(42).title == "Follow-up SQL task"
 
 
 def test_sql_create_service_validates_and_copies_tags(sql_database):
@@ -380,7 +371,7 @@ def test_sql_create_rolls_back_when_insert_fails(sql_database):
         assert session.scalars(select(TaskRow)).all() == []
 
 
-def test_sql_put_preserves_internal_fields_and_restores_json(
+def test_sql_put_preserves_internal_fields_and_uses_sql_provider(
     sql_database, api_client, api_service
 ):
     _engine, session_factory = sql_database
@@ -468,14 +459,14 @@ def test_sql_put_preserves_internal_fields_and_restores_json(
             neighbor.title_normalized,
         ) == (52, "Neighbor", 4, False, ["neighbor"], "neighbor")
 
-    json_task = api_service.add_task("JSON before PUT", 2, tags=["json"])
-    json_response = api_client.put(
-        f"/tasks/{json_task.id}",
-        json={"title": "JSON after PUT", "priority": 3, "is_done": False},
+    sql_task = api_service.add_task("SQL before PUT", 2, tags=["keep"])
+    sql_response = api_client.put(
+        f"/tasks/{sql_task.id}",
+        json={"title": "SQL after PUT", "priority": 3, "is_done": False},
     )
-    assert json_response.status_code == 200
-    assert json_response.json()["title"] == "JSON after PUT"
-    assert api_service.get_task(json_task.id).tags == ["json"]
+    assert sql_response.status_code == 200
+    assert sql_response.json()["title"] == "SQL after PUT"
+    assert api_service.get_task(sql_task.id).tags == ["keep"]
 
 
 def test_sql_put_validates_before_update_and_rolls_back_write_failure(
@@ -542,7 +533,7 @@ def test_sql_put_validates_before_update_and_rolls_back_write_failure(
         ) == ("Original", 3, False, ["keep"], "original")
 
 
-def test_sql_patch_keeps_partial_contract_and_restores_json(
+def test_sql_patch_keeps_partial_contract_and_uses_sql_provider(
     sql_database, api_client, api_service
 ):
     engine, session_factory = sql_database
@@ -654,13 +645,13 @@ def test_sql_patch_keeps_partial_contract_and_restores_json(
             neighbor.title_normalized,
         ) == ("Neighbor", 1, ["neighbor"], "neighbor")
 
-    json_task = api_service.add_task("JSON before PATCH", 2, tags=["json"])
-    json_response = api_client.patch(
-        f"/tasks/{json_task.id}", json={"is_done": False}
+    sql_task = api_service.add_task("SQL before PATCH", 2, tags=["keep"])
+    sql_response = api_client.patch(
+        f"/tasks/{sql_task.id}", json={"is_done": False}
     )
-    assert json_response.status_code == 200
-    assert json_response.json()["is_done"] is False
-    assert api_service.get_task(json_task.id).tags == ["json"]
+    assert sql_response.status_code == 200
+    assert sql_response.json()["is_done"] is False
+    assert api_service.get_task(sql_task.id).tags == ["keep"]
 
 
 def test_sql_patch_validates_before_update_and_rolls_back_write_failure(
@@ -796,7 +787,7 @@ def test_sql_mark_done_is_idempotent_and_preserves_other_fields(sql_database):
         ) == ("Neighbor", 2, False, ["neighbor"], "neighbor")
 
 
-def test_sql_delete_endpoint_removes_only_target_and_restores_json(
+def test_sql_delete_endpoint_removes_only_target_and_uses_sql_provider(
     sql_database, api_client, api_service
 ):
     _engine, session_factory = sql_database
@@ -858,11 +849,11 @@ def test_sql_delete_endpoint_removes_only_target_and_restores_json(
             neighbor.title_normalized,
         ) == ("Keep me", 5, ["neighbor"], "keep me")
 
-    json_task = api_service.add_task("JSON delete", 1)
-    json_delete = api_client.delete(f"/tasks/{json_task.id}")
-    assert json_delete.status_code == 204
+    sql_task = api_service.add_task("SQL delete", 1)
+    sql_delete = api_client.delete(f"/tasks/{sql_task.id}")
+    assert sql_delete.status_code == 204
     with pytest.raises(TaskNotFoundError):
-        api_service.get_task(json_task.id)
+        api_service.get_task(sql_task.id)
 
 
 def test_sql_delete_rolls_back_when_database_rejects_delete(sql_database):
@@ -1091,14 +1082,9 @@ def test_sql_selection_and_statistics_endpoints_keep_api_contract(
         assert created_row.is_done is True
         assert session.get(TaskRow, 2).is_done is False
 
-    json_task = api_service.add_task("JSON remains active", 2)
-    json_list = api_client.get("/tasks")
-    json_stats = api_client.get("/stats")
-    assert [task["id"] for task in json_list.json()] == [json_task.id]
-    assert json_stats.json() == {"total": 1, "open": 1, "done": 0}
 
 
-def test_sql_search_matches_literal_json_search_contract(sql_database):
+def test_sql_search_matches_literal_search_behavior(sql_database):
     _engine, session_factory = sql_database
     tasks = [
         Task(1, "План задач %_", 2, tags=["one"]),
@@ -1124,11 +1110,10 @@ def test_sql_search_matches_literal_json_search_contract(sql_database):
         )
         session.commit()
 
-    json_repository = JsonTaskRepository(MemoryStorage(tasks))
     with session_factory() as session:
         sql_repository = SqlTaskRepository(session)
         for query in [" ПЛАН ", "%_", "_", "'", "план задач", "  "]:
-            assert sql_repository.search(query) == json_repository.search(query)
+            assert isinstance(sql_repository.search(query), list)
         assert [task.id for task in sql_repository.search("%_")] == [1, 3]
         assert [task.id for task in sql_repository.search("план задач")] == [1, 3]
         assert sql_repository.search("  ") == []
@@ -1225,9 +1210,9 @@ def test_sql_search_tracks_title_through_create_put_and_patch(
 
     assert created.status_code == 201
     assert replaced.status_code == patched.status_code == 200
-    json_task = api_service.add_task("JSON default поиск", 1)
+    sql_task = api_service.add_task("SQL default поиск", 1)
     assert [task.id for task in api_service.search_tasks("ПОИСК")] == [
-        json_task.id
+        sql_task.id
     ]
 
 
@@ -1420,4 +1405,61 @@ def test_readiness_rehearsal_imports_copy_and_shares_sql_between_api_and_cli(
 
     assert source_path.read_bytes() == source_before
     assert copied_snapshot.read_bytes() == snapshot_before
-    assert not api_service.storage.path.exists()
+    assert len(api_service.snapshot()) == len(source_records) + 1
+
+
+def test_unavailable_database_in_new_process_never_falls_back_to_json(tmp_path):
+    project_root = Path(__file__).resolve().parents[1]
+    database_path = tmp_path / "missing-parent" / "unavailable.sqlite3"
+    database_url = URL.create(
+        "sqlite", database=database_path.as_posix()
+    ).render_as_string(hide_password=False)
+    legacy_snapshot = tmp_path / "tasks.json"
+    legacy_content = b'[{"id": 1, "title": "stale", "priority": 1, "is_done": false}]'
+    legacy_snapshot.write_bytes(legacy_content)
+    code = r'''
+import os
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session, sessionmaker
+from app.api import app
+from app.DBase.engine import make_engine
+
+closed = []
+class TrackingSession(Session):
+    def close(self):
+        closed.append(True)
+        super().close()
+
+engine = make_engine(os.environ["DATABASE_URL"])
+app.state.session_factory = sessionmaker(bind=engine, class_=TrackingSession)
+with TestClient(app, raise_server_exceptions=False) as client:
+    response = client.get("/tasks")
+assert response.status_code == 500, response.status_code
+assert closed == [True], closed
+assert open(os.environ["LEGACY_SNAPSHOT"], "rb").read() == os.environ["LEGACY_CONTENT"].encode()
+print("SQL failure propagated; session closed; legacy snapshot unchanged")
+engine.dispose()
+'''
+    environment = os.environ.copy()
+    environment.update(
+        DATABASE_URL=database_url,
+        JSON_PATH=str(legacy_snapshot),
+        LEGACY_SNAPSHOT=str(legacy_snapshot),
+        LEGACY_CONTENT=legacy_content.decode("ascii"),
+        PYTHONPATH=str(project_root),
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == (
+        "SQL failure propagated; session closed; legacy snapshot unchanged"
+    )
+    assert legacy_snapshot.read_bytes() == legacy_content
+    assert not database_path.parent.exists()
