@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import app
 from app.core.dependencies import get_db, get_planner
+from app.errors import TaskNotFoundError
 from app.DBase.engine import make_engine
 from app.DBase.init_db import initialize_database
 from app.DBase.models import TaskRow
@@ -714,3 +715,195 @@ def test_sql_patch_validates_before_update_and_rolls_back_write_failure(
             row.tags,
             row.title_normalized,
         ) == ("Original", 3, True, ["keep"], "original")
+
+
+def test_sql_mark_done_is_idempotent_and_preserves_other_fields(sql_database):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=91,
+                    title="Finish lesson",
+                    priority=4,
+                    tags=["course", "internal"],
+                    title_normalized="finish lesson",
+                ),
+                TaskRow(
+                    id=92,
+                    title="Neighbor",
+                    priority=2,
+                    tags=["neighbor"],
+                    title_normalized="neighbor",
+                ),
+            ]
+        )
+        session.commit()
+
+    updates = []
+
+    def record_update(_conn, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("UPDATE"):
+            updates.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_update)
+    try:
+        with session_factory() as session:
+            planner = build_service(
+                repository=SqlTaskRepository(session),
+                write_scope=session.begin,
+            )
+            first = planner.mark_done(91)
+            second = planner.mark_done(91)
+            with pytest.raises(TaskNotFoundError):
+                planner.mark_done(999)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_update)
+
+    assert first == second == Task(
+        91,
+        "Finish lesson",
+        4,
+        is_done=True,
+        tags=["course", "internal"],
+    )
+    assert len(updates) == 1
+
+    with session_factory() as session:
+        done = session.get(TaskRow, 91)
+        neighbor = session.get(TaskRow, 92)
+        assert (
+            done.id,
+            done.title,
+            done.priority,
+            done.is_done,
+            done.tags,
+            done.title_normalized,
+        ) == (91, "Finish lesson", 4, True, ["course", "internal"], "finish lesson")
+        assert (
+            neighbor.title,
+            neighbor.priority,
+            neighbor.is_done,
+            neighbor.tags,
+            neighbor.title_normalized,
+        ) == ("Neighbor", 2, False, ["neighbor"], "neighbor")
+
+
+def test_sql_delete_endpoint_removes_only_target_and_restores_json(
+    sql_database, api_client, api_service
+):
+    _engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=101,
+                    title="Remove me",
+                    priority=3,
+                    tags=["target"],
+                    title_normalized="remove me",
+                ),
+                TaskRow(
+                    id=102,
+                    title="Keep me",
+                    priority=5,
+                    tags=["neighbor"],
+                    title_normalized="keep me",
+                ),
+            ]
+        )
+        session.commit()
+
+    previous_factory = getattr(app.state, "session_factory", None)
+    had_factory = hasattr(app.state, "session_factory")
+    previous_overrides = app.dependency_overrides.copy()
+
+    def get_sql_planner(db=Depends(get_db)):
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
+
+    app.state.session_factory = session_factory
+    app.dependency_overrides[get_planner] = get_sql_planner
+    try:
+        deleted = api_client.delete("/tasks/101")
+        missing_get = api_client.get("/tasks/101")
+        repeated_delete = api_client.delete("/tasks/101")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        if had_factory:
+            app.state.session_factory = previous_factory
+        else:
+            del app.state.session_factory
+
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+    assert missing_get.status_code == repeated_delete.status_code == 404
+    with session_factory() as session:
+        assert session.get(TaskRow, 101) is None
+        neighbor = session.get(TaskRow, 102)
+        assert (
+            neighbor.title,
+            neighbor.priority,
+            neighbor.tags,
+            neighbor.title_normalized,
+        ) == ("Keep me", 5, ["neighbor"], "keep me")
+
+    json_task = api_service.add_task("JSON delete", 1)
+    json_delete = api_client.delete(f"/tasks/{json_task.id}")
+    assert json_delete.status_code == 204
+    with pytest.raises(TaskNotFoundError):
+        api_service.get_task(json_task.id)
+
+
+def test_sql_delete_rolls_back_when_database_rejects_delete(sql_database):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=111,
+                    title="Protected row",
+                    priority=2,
+                    tags=["keep"],
+                    title_normalized="protected row",
+                ),
+                TaskRow(
+                    id=112,
+                    title="Neighbor",
+                    priority=1,
+                    tags=["neighbor"],
+                    title_normalized="neighbor",
+                ),
+            ]
+        )
+        session.commit()
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TRIGGER reject_task_delete BEFORE DELETE ON tasks "
+            "WHEN OLD.id = 111 "
+            "BEGIN SELECT RAISE(ABORT, 'rejected'); END"
+        )
+
+    with session_factory() as session:
+        planner = build_service(
+            repository=SqlTaskRepository(session),
+            write_scope=session.begin,
+        )
+        with pytest.raises(IntegrityError):
+            planner.delete_task(111)
+
+    with session_factory() as session:
+        protected = session.get(TaskRow, 111)
+        neighbor = session.get(TaskRow, 112)
+        assert (
+            protected.title,
+            protected.priority,
+            protected.is_done,
+            protected.tags,
+            protected.title_normalized,
+        ) == ("Protected row", 2, False, ["keep"], "protected row")
+        assert neighbor.title == "Neighbor"

@@ -108,23 +108,28 @@ class PlannerService:
         return saved
 
     def mark_done(self, task_id):
-        task = self.get_task(task_id)
-        if task.is_done:
-            return task
-        updated = Task(
-            id=task.id,
-            title=task.title,
-            priority=task.priority,
-            is_done=True,
-            tags=task.tags.copy(),
-        )
-        saved = self.repository.update(updated.id, updated)
-        if saved is None:
-            self._raise_task_not_found(updated.id)
+        task_id = self._validate_task_id(task_id)
+        with self.write_scope():
+            task = self.get_task(task_id)
+            if task.is_done:
+                return task
+            updated = Task(
+                id=task.id,
+                title=task.title,
+                priority=task.priority,
+                is_done=task.is_done,
+                tags=task.tags.copy(),
+            )
+            updated.mark_done()
+            saved = self.repository.update(updated.id, updated)
+            if saved is None:
+                self._raise_task_not_found(updated.id)
         return saved
 
     def delete_task(self, task_id):
-        task = self.get_task(task_id)
-        if not self.repository.delete(task.id):
-            self._raise_task_not_found(task.id)
+        task_id = self._validate_task_id(task_id)
+        with self.write_scope():
+            task = self.get_task(task_id)
+            if not self.repository.delete(task.id):
+                self._raise_task_not_found(task.id)
         return None

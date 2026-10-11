@@ -57,3 +57,11 @@ class SqlTaskRepository:
         row.title_normalized = task.title.lower()
         self.session.flush()
         return task_from_row(row)
+
+    def delete(self, task_id: int) -> bool:
+        row = self.session.get(TaskRow, task_id)
+        if row is None:
+            return False
+
+        self.session.delete(row)
+        return True
