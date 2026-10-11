@@ -44,3 +44,16 @@ class SqlTaskRepository:
         row.title_normalized = task.title.lower()
         self.session.flush()
         return task_from_row(row)
+
+    def update(self, task_id: int, task: Task) -> Task | None:
+        row = self.session.get(TaskRow, task_id)
+        if row is None:
+            return None
+
+        row.title = task.title
+        row.priority = task.priority
+        row.is_done = task.is_done
+        row.tags = task.tags.copy()
+        row.title_normalized = task.title.lower()
+        self.session.flush()
+        return task_from_row(row)

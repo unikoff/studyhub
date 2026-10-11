@@ -532,3 +532,185 @@ def test_sql_put_validates_before_update_and_rolls_back_write_failure(
             row.tags,
             row.title_normalized,
         ) == ("Original", 3, False, ["keep"], "original")
+
+
+def test_sql_patch_keeps_partial_contract_and_restores_json(
+    sql_database, api_client, api_service
+):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=71,
+                    title="Original title",
+                    priority=4,
+                    is_done=True,
+                    tags=["private", "retain"],
+                    title_normalized="original title",
+                ),
+                TaskRow(
+                    id=72,
+                    title="Neighbor",
+                    priority=1,
+                    tags=["neighbor"],
+                    title_normalized="neighbor",
+                ),
+            ]
+        )
+        session.commit()
+
+    previous_factory = getattr(app.state, "session_factory", None)
+    had_factory = hasattr(app.state, "session_factory")
+    previous_overrides = app.dependency_overrides.copy()
+
+    def get_sql_planner(db=Depends(get_db)):
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
+
+    app.state.session_factory = session_factory
+    app.dependency_overrides[get_planner] = get_sql_planner
+    no_op_statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        no_op_statements.append(statement.lstrip().split(None, 1)[0].upper())
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        put = api_client.put(
+            "/tasks/71",
+            json={"title": "Before PATCH", "priority": 5, "is_done": True},
+        )
+        lowered = api_client.patch("/tasks/71", json={"is_done": False})
+        no_op_start = len(no_op_statements)
+        empty = api_client.patch("/tasks/71", json={})
+        explicit_null = api_client.patch("/tasks/71", json={"title": None})
+        unknown_empty = api_client.patch("/tasks/999", json={})
+        no_op_end = len(no_op_statements)
+        changed_fields = api_client.patch(
+            "/tasks/71", json={"title": "Changed by PATCH", "priority": 2}
+        )
+        invalid = api_client.patch("/tasks/71", json={"title": "   "})
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        if had_factory:
+            app.state.session_factory = previous_factory
+        else:
+            del app.state.session_factory
+
+    assert put.status_code == lowered.status_code == changed_fields.status_code == 200
+    assert lowered.json() == {
+        "id": 71,
+        "title": "Before PATCH",
+        "priority": 5,
+        "is_done": False,
+    }
+    assert empty.status_code == explicit_null.status_code == 200
+    assert empty.json() == explicit_null.json() == lowered.json()
+    assert unknown_empty.status_code == 404
+    assert invalid.status_code == 422
+    assert changed_fields.json() == {
+        "id": 71,
+        "title": "Changed by PATCH",
+        "priority": 2,
+        "is_done": False,
+    }
+    assert "UPDATE" not in no_op_statements[no_op_start:no_op_end]
+
+    with session_factory() as session:
+        changed = session.get(TaskRow, 71)
+        neighbor = session.get(TaskRow, 72)
+        assert (
+            changed.id,
+            changed.title,
+            changed.priority,
+            changed.is_done,
+            changed.tags,
+            changed.title_normalized,
+        ) == (
+            71,
+            "Changed by PATCH",
+            2,
+            False,
+            ["private", "retain"],
+            "changed by patch",
+        )
+        assert (
+            neighbor.title,
+            neighbor.priority,
+            neighbor.tags,
+            neighbor.title_normalized,
+        ) == ("Neighbor", 1, ["neighbor"], "neighbor")
+
+    json_task = api_service.add_task("JSON before PATCH", 2, tags=["json"])
+    json_response = api_client.patch(
+        f"/tasks/{json_task.id}", json={"is_done": False}
+    )
+    assert json_response.status_code == 200
+    assert json_response.json()["is_done"] is False
+    assert api_service.get_task(json_task.id).tags == ["json"]
+
+
+def test_sql_patch_validates_before_update_and_rolls_back_write_failure(
+    sql_database,
+):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add(
+            TaskRow(
+                id=81,
+                title="Original",
+                priority=3,
+                is_done=True,
+                tags=["keep"],
+                title_normalized="original",
+            )
+        )
+        session.commit()
+
+    statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement.lstrip().split(None, 1)[0].upper())
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        with session_factory() as session:
+            planner = build_service(
+                repository=SqlTaskRepository(session),
+                write_scope=session.begin,
+            )
+            with pytest.raises(ValueError):
+                planner.patch_task(81, title="   ", is_done=False)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+    assert "UPDATE" not in statements
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TRIGGER reject_task_patch BEFORE UPDATE ON tasks "
+            "WHEN NEW.title = 'Rejected' "
+            "BEGIN SELECT RAISE(ABORT, 'rejected'); END"
+        )
+
+    with session_factory() as session:
+        planner = build_service(
+            repository=SqlTaskRepository(session),
+            write_scope=session.begin,
+        )
+        with pytest.raises(IntegrityError):
+            planner.patch_task(81, title="Rejected", is_done=False)
+
+    with session_factory() as session:
+        row = session.get(TaskRow, 81)
+        assert (
+            row.title,
+            row.priority,
+            row.is_done,
+            row.tags,
+            row.title_normalized,
+        ) == ("Original", 3, True, ["keep"], "original")

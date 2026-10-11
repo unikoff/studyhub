@@ -89,20 +89,22 @@ class PlannerService:
     def patch_task(
         self, task_id, *, title=None, priority=None, is_done=None
     ):
-        current = self.get_task(task_id)
-        if title is None and priority is None and is_done is None:
-            return current
+        task_id = self._validate_task_id(task_id)
+        with self.write_scope():
+            current = self.get_task(task_id)
+            if title is None and priority is None and is_done is None:
+                return current
 
-        updated = Task(
-            id=current.id,
-            title=current.title if title is None else title,
-            priority=current.priority if priority is None else priority,
-            is_done=current.is_done if is_done is None else is_done,
-            tags=current.tags.copy(),
-        )
-        saved = self.repository.update(current.id, updated)
-        if saved is None:
-            self._raise_task_not_found(current.id)
+            updated = Task(
+                id=current.id,
+                title=current.title if title is None else title,
+                priority=current.priority if priority is None else priority,
+                is_done=current.is_done if is_done is None else is_done,
+                tags=current.tags.copy(),
+            )
+            saved = self.repository.update(current.id, updated)
+            if saved is None:
+                self._raise_task_not_found(current.id)
         return saved
 
     def mark_done(self, task_id):
