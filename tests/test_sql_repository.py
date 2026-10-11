@@ -1,6 +1,7 @@
 import pytest
 from fastapi import Depends
 from sqlalchemy import URL, event, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import app
@@ -152,7 +153,10 @@ def test_sql_get_provider_uses_a_request_session_and_restores_json(
     json_task = api_service.add_task("JSON task", 2)
 
     def get_sql_planner(db=Depends(get_db)):
-        return build_service(repository=SqlTaskRepository(db))
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
 
     app.state.session_factory = tracked_factory
     app.dependency_overrides[get_planner] = get_sql_planner
@@ -222,3 +226,147 @@ def test_sql_service_context_closes_session_after_success_and_error(sql_database
         with sql_service_context(make_session):
             raise RuntimeError("command failed")
     assert created[-1].was_closed
+
+
+def test_sql_post_uses_generated_id_and_restores_json_provider(
+    sql_database, api_client, api_service
+):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add(
+            TaskRow(
+                id=40,
+                title="Imported task",
+                priority=4,
+                is_done=True,
+                tags=["history"],
+                title_normalized="imported task",
+            )
+        )
+        session.commit()
+
+    previous_factory = getattr(app.state, "session_factory", None)
+    had_factory = hasattr(app.state, "session_factory")
+    previous_overrides = app.dependency_overrides.copy()
+
+    def get_sql_planner(db=Depends(get_db)):
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
+
+    app.state.session_factory = session_factory
+    app.dependency_overrides[get_planner] = get_sql_planner
+    try:
+        response = api_client.post(
+            "/tasks", json={"title": "New SQL task", "priority": 3}
+        )
+        invalid = api_client.post("/tasks", json={"title": "   ", "priority": 2})
+        missing_priority = api_client.post(
+            "/tasks", json={"title": "No priority"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        if had_factory:
+            app.state.session_factory = previous_factory
+        else:
+            del app.state.session_factory
+
+    assert response.status_code == 201
+    public_data = response.json()
+    assert set(public_data) == {"id", "title", "priority", "is_done"}
+    assert public_data["id"] > 40
+    assert public_data["title"] == "New SQL task"
+    assert public_data["priority"] == 3
+    assert public_data["is_done"] is False
+    assert invalid.status_code == 422
+    assert missing_priority.status_code == 422
+    assert not api_service.storage.path.exists()
+
+    with session_factory() as session:
+        created = session.get(TaskRow, public_data["id"])
+        assert created is not None
+        assert (
+            created.title,
+            created.priority,
+            created.is_done,
+            created.tags,
+            created.title_normalized,
+        ) == ("New SQL task", 3, False, [], "new sql task")
+        assert session.get(TaskRow, 40).tags == ["history"]
+
+    json_response = api_client.post(
+        "/tasks", json={"title": "JSON task", "priority": 2}
+    )
+    assert json_response.status_code == 201
+    assert json_response.json()["id"] == 1
+    assert api_service.get_task(1).title == "JSON task"
+
+
+def test_sql_create_service_validates_and_copies_tags(sql_database):
+    engine, session_factory = sql_database
+    input_tags = [" sql ", " student "]
+    with session_factory() as session:
+        planner = build_service(
+            repository=SqlTaskRepository(session),
+            write_scope=session.begin,
+        )
+        created = planner.add_task("  Tagged task  ", 2, tags=input_tags)
+
+    input_tags.append("outside")
+    assert created.id > 0
+    assert created.title == "Tagged task"
+    assert created.tags == ["sql", "student"]
+
+    with session_factory() as session:
+        row = session.get(TaskRow, created.id)
+        assert row.tags == ["sql", "student"]
+        assert row.title_normalized == "tagged task"
+
+    statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        with session_factory() as session:
+            planner = build_service(
+                repository=SqlTaskRepository(session),
+                write_scope=session.begin,
+            )
+            invalid_inputs = [
+                ("   ", 2, None),
+                ("Valid", 6, None),
+                ("Valid", 2, [""]),
+            ]
+            for title, priority, tags in invalid_inputs:
+                with pytest.raises(ValueError):
+                    planner.add_task(title, priority, tags)
+                assert session.get_transaction() is None
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+    assert statements == []
+
+
+def test_sql_create_rolls_back_when_insert_fails(sql_database):
+    engine, _session_factory = sql_database
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TRIGGER reject_new_task BEFORE INSERT ON tasks "
+            "WHEN NEW.title = 'Rejected' "
+            "BEGIN SELECT RAISE(ABORT, 'rejected'); END"
+        )
+
+    factory = make_session_factory(engine)
+    with factory() as session:
+        planner = build_service(
+            repository=SqlTaskRepository(session),
+            write_scope=session.begin,
+        )
+        with pytest.raises(IntegrityError):
+            planner.add_task("Rejected", 2)
+
+    with factory() as session:
+        assert session.scalars(select(TaskRow)).all() == []

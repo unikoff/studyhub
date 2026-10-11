@@ -19,3 +19,15 @@ class SqlTaskRepository:
         if row is None:
             return None
         return task_from_row(row)
+
+    def create(self, title: str, priority: int, tags=None) -> Task:
+        row = TaskRow(
+            title=title,
+            priority=priority,
+            is_done=False,
+            tags=list(tags) if tags is not None else [],
+            title_normalized=title.lower(),
+        )
+        self.session.add(row)
+        self.session.flush()
+        return task_from_row(row)

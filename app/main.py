@@ -9,11 +9,18 @@ from app.storage import JsonStorage
 from app.DBase.repositories import SqlTaskRepository
 
 
-def build_service(storage=None, settings=None, repository=None):
+def build_service(
+    storage=None, settings=None, repository=None, write_scope=None
+):
     if repository is not None:
         if storage is not None:
             raise ValueError("Pass either storage or repository, not both")
-        return PlannerService(repository=repository)
+        return PlannerService(
+            repository=repository,
+            write_scope=write_scope,
+        )
+    if write_scope is not None:
+        raise ValueError("write_scope requires a repository")
 
     if storage is not None:
         return PlannerService(storage)
@@ -27,7 +34,10 @@ def build_service(storage=None, settings=None, repository=None):
 @contextmanager
 def sql_service_context(session_factory) -> Iterator[PlannerService]:
     with session_factory() as db:
-        yield build_service(repository=SqlTaskRepository(db))
+        yield build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
 
 
 def main():
