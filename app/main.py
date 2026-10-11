@@ -6,7 +6,9 @@ from app.core.config import load_settings
 from app.errors import StorageError
 from app.services import PlannerService
 from app.storage import JsonStorage
+from app.DBase.engine import make_engine
 from app.DBase.repositories import SqlTaskRepository
+from app.DBase.session import make_session_factory
 
 
 def build_service(
@@ -47,10 +49,14 @@ def sql_service_context(session_factory) -> Iterator[PlannerService]:
 
 def main():
     settings = load_settings()
+    engine = make_engine(settings.database_url)
+    session_factory = make_session_factory(engine)
     try:
-        return run(lambda: json_service_context(settings))
+        return run(lambda: sql_service_context(session_factory))
     except StorageError as error:
         print(f"Planner остановлен: {error}")
+    finally:
+        engine.dispose()
 
 
 if __name__ == "__main__":

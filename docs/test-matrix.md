@@ -10,10 +10,12 @@
 | Неизвестный id изменяет сохранённый набор | Integration | `tests/test_persistence.py` | `TaskNotFoundError`, исходный JSON не меняется |
 | Неверная JSON-схема или ошибка файловой системы маскируется под пустую базу | Integration | `tests/test_persistence.py` | `StorageError`; исходные данные не переписываются |
 | Команда показывает неверный ответ, меняет не те данные или сохраняет лишний раз | CLI regression | `tests/test_cli.py` | Сообщения, состояние Task и количество вызовов `save` соответствуют действию |
-| Сборка делает IO или импорт запускает меню | CLI boundary | `tests/test_cli.py` | Переданный storage не вызывается при сборке; default выбирает JsonStorage; subprocess import без вывода |
+| Сборка делает IO или импорт запускает меню | CLI boundary | `tests/test_cli.py` | Переданный storage не вызывается при сборке; импорт без вывода; известная команда получает свой ресурс |
 | HTTP API contract | Integration | `tests/test_api.py` | Маршруты, публичная схема, ошибки 404/422, PUT/PATCH и DELETE проверяются через ASGI без рабочей JSON-базы |
 | Несогласованность операций в одном жизненном цикле задачи | Workflow integration | `tests/test_workflow.py` | Создание, чтение, PUT/PATCH, отказ, удаление и stats проходят через один TestClient и изолированный JsonStorage |
 | SQL readiness rehearsal между интерфейсами | Workflow integration | `tests/test_sql_repository.py::test_readiness_rehearsal_imports_copy_and_shares_sql_between_api_and_cli` | Копия JSON импортируется в пустую временную SQLite; API и CLI используют её через отдельные закрытые Session, а независимое чтение подтверждает общее состояние |
+| Штатные API и CLI используют одну SQL-базу | Workflow integration | `tests/test_config.py::test_api_and_cli_share_loaded_settings_and_sql` | API создаёт задачу в изолированной базе; CLI находит её и читает статистику через новую Session |
+| Чистый clone может создать SQLite в отсутствующем каталоге data | Integration | `tests/test_dbase_sessions.py::test_initialize_database_creates_missing_parent_directory` | Инициализация создаёт каталог и таблицу без ручной подготовки директорий |
 
 `tests/conftest.py` предоставляет каждому тесту новые Task, MemoryStorage и `PlannerService` по умолчанию. Параметризованные случаи проверяют варианты одного правила; файловые сценарии используют отдельные пути `tmp_path`. Пользовательский `data/tasks.json` не является фикстурой.
 

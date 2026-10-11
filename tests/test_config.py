@@ -1,4 +1,3 @@
-from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -7,8 +6,12 @@ from sqlalchemy.engine import URL, make_url
 
 from app import main as main_module
 from app.api import app
-from app.cli import execute_command
+from app.cli import run
 from app.core import config
+from app.DBase.engine import make_engine
+from app.DBase.init_db import initialize_database
+from app.DBase.session import make_session_factory
+from app.main import sql_service_context
 from app.storage import JsonStorage, MemoryStorage
 
 
@@ -249,7 +252,11 @@ def test_build_service_uses_settings_and_preserves_explicit_storage(
     isolated_config, monkeypatch
 ):
     selected_path = isolated_config / "selected.json"
-    settings = config.Settings(json_path=selected_path, app_name="Test Planner")
+    settings = config.Settings(
+        json_path=selected_path,
+        app_name="Test Planner",
+        database_url=config.default_database_url(isolated_config),
+    )
 
     service = main_module.build_service(settings=settings)
 
@@ -265,21 +272,22 @@ def test_build_service_uses_settings_and_preserves_explicit_storage(
     assert main_module.build_service(storage).storage is storage
 
 
-def test_api_and_cli_share_loaded_settings_and_json(
-    isolated_config, monkeypatch
-):
-    selected_path = isolated_config / "selected.json"
+def test_api_and_cli_share_loaded_settings_and_sql(isolated_config):
     config.ENV_FILE.write_text(
-        f"JSON_PATH={selected_path.as_posix()}\nAPP_NAME=StudyHub Test\n",
+        "APP_NAME=StudyHub Test\n",
         encoding="utf-8",
     )
     settings = config.load_settings(project_root=isolated_config)
+    Path(make_url(settings.database_url).database).parent.mkdir(parents=True)
+    initialize_database(settings)
+    engine = make_engine(settings.database_url)
+    session_factory = make_session_factory(engine)
     previous_settings = app.state.settings
-    previous_service = app.state.planner
+    previous_factory = app.state.session_factory
 
     try:
         app.state.settings = settings
-        app.state.planner = main_module.build_service(settings=settings)
+        app.state.session_factory = session_factory
         with TestClient(app, follow_redirects=False) as client:
             response = client.post(
                 "/tasks",
@@ -287,17 +295,49 @@ def test_api_and_cli_share_loaded_settings_and_json(
             )
             assert response.status_code == 201, response.text
 
-        assert selected_path.exists()
-
         messages = []
-        cli_service = main_module.build_service(settings=settings)
-        execute_command(
-            lambda: nullcontext(cli_service),
-            "list",
-            read=lambda _prompt: "",
+        answers = iter(("find", str(response.json()["id"]), "stats", "exit"))
+        run(
+            lambda: sql_service_context(session_factory),
+            read=lambda _prompt: next(answers),
             write=messages.append,
         )
         assert any("изолированная задача" in message.casefold() for message in messages)
+        assert any("Всего: 1" in message for message in messages)
     finally:
         app.state.settings = previous_settings
-        app.state.planner = previous_service
+        app.state.session_factory = previous_factory
+        engine.dispose()
+
+
+def test_cli_main_uses_configured_sqlite(isolated_config, monkeypatch):
+    settings = config.Settings(
+        json_path=isolated_config / "unused.json",
+        app_name="StudyHub Test",
+        database_url=config.default_database_url(isolated_config),
+    )
+    Path(make_url(settings.database_url).database).parent.mkdir(parents=True)
+    initialize_database(settings)
+    engine = make_engine(settings.database_url)
+    session_factory = make_session_factory(engine)
+    try:
+        with sql_service_context(session_factory) as planner:
+            planner.add_task("Задача из SQL", 2)
+    finally:
+        engine.dispose()
+
+    monkeypatch.setattr(main_module, "load_settings", lambda: settings)
+    messages = []
+
+    def run_cli(service_context):
+        answers = iter(("list", "exit"))
+        return run(
+            service_context,
+            read=lambda _prompt: next(answers),
+            write=messages.append,
+        )
+
+    monkeypatch.setattr(main_module, "run", run_cli)
+    main_module.main()
+
+    assert any("Задача из SQL" in message for message in messages)

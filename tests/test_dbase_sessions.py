@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 
-from sqlalchemy import URL, func, select
+from sqlalchemy import URL, func, inspect, select
 
 from app.DBase.engine import make_engine
 from app.DBase.init_db import initialize_database
@@ -38,6 +38,21 @@ def test_factory_creates_fresh_sessions_without_connecting(tmp_path):
         finally:
             first.close()
             second.close()
+    finally:
+        engine.dispose()
+
+
+def test_initialize_database_creates_missing_parent_directory(tmp_path):
+    database_path = tmp_path / "new-data" / "nested" / "studyhub.sqlite3"
+    settings = _settings_for(database_path)
+
+    assert not database_path.parent.exists()
+    initialize_database(settings)
+
+    assert database_path.is_file()
+    engine = make_engine(settings.database_url)
+    try:
+        assert inspect(engine).has_table("tasks")
     finally:
         engine.dispose()
 

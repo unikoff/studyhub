@@ -4,4 +4,6 @@ review.md
 __pycache__/
 *.pyc
 data/tasks.json
+data/*.sqlite3
+data/archives/
 .env

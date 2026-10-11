@@ -8,10 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.models import Task
 from app.services import PlannerService
-
-
-def get_planner(request: Request) -> PlannerService:
-    return request.app.state.planner
+from app.DBase.repositories import SqlTaskRepository
 
 
 def get_db(request: Request) -> Iterator[Session]:
@@ -24,6 +21,13 @@ def get_db(request: Request) -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def get_planner(db: Session = Depends(get_db)) -> PlannerService:
+    return PlannerService(
+        repository=SqlTaskRepository(db),
+        write_scope=db.begin,
+    )
 
 
 def get_settings(request: Request) -> Settings:
