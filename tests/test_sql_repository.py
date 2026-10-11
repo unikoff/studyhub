@@ -907,3 +907,185 @@ def test_sql_delete_rolls_back_when_database_rejects_delete(sql_database):
             protected.title_normalized,
         ) == ("Protected row", 2, False, ["keep"], "protected row")
         assert neighbor.title == "Neighbor"
+
+
+def test_sql_select_filters_orders_and_limits_after_filter(sql_database):
+    _engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=8, title="Open 8", priority=2,
+                    tags=[], title_normalized="open 8",
+                ),
+                TaskRow(
+                    id=2, title="Done 2", priority=3, is_done=True,
+                    tags=[], title_normalized="done 2",
+                ),
+                TaskRow(
+                    id=5, title="Open 5", priority=4,
+                    tags=[], title_normalized="open 5",
+                ),
+                TaskRow(
+                    id=3, title="Done 3", priority=1, is_done=True,
+                    tags=[], title_normalized="done 3",
+                ),
+            ]
+        )
+        session.commit()
+
+    with session_factory() as session:
+        repository = SqlTaskRepository(session)
+        assert [task.id for task in repository.select()] == [2, 3, 5, 8]
+        assert [task.id for task in repository.select(is_done=False)] == [5, 8]
+        assert [task.id for task in repository.select(is_done=True)] == [2, 3]
+        assert [task.id for task in repository.select(sort_desc=True)] == [8, 5, 3, 2]
+        assert [task.id for task in repository.select(
+            is_done=False, sort_desc=True, limit=1
+        )] == [8]
+        assert [task.id for task in repository.select(limit=2)] == [2, 3]
+        assert all(isinstance(task, Task) for task in repository.select())
+
+
+def test_sql_statistics_uses_counts_for_empty_and_mixed_rows(sql_database):
+    engine, session_factory = sql_database
+    with session_factory() as session:
+        repository = SqlTaskRepository(session)
+        assert repository.statistics() == {"all": 0, "open": 0, "done": 0}
+
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=1, title="Open one", priority=2,
+                    tags=[], title_normalized="open one",
+                ),
+                TaskRow(
+                    id=2, title="Done one", priority=4, is_done=True,
+                    tags=[], title_normalized="done one",
+                ),
+                TaskRow(
+                    id=3, title="Open two", priority=1,
+                    tags=[], title_normalized="open two",
+                ),
+            ]
+        )
+        session.commit()
+
+    statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record_statement)
+    try:
+        with session_factory() as session:
+            result = SqlTaskRepository(session).statistics()
+    finally:
+        event.remove(engine, "before_cursor_execute", record_statement)
+
+    assert result == {"all": 3, "open": 2, "done": 1}
+    assert len(statements) == 1
+    assert "COUNT" in statements[0].upper()
+
+
+def test_sql_selection_and_statistics_endpoints_keep_api_contract(
+    sql_database, api_client, api_service
+):
+    _engine, session_factory = sql_database
+    with session_factory() as session:
+        session.add_all(
+            [
+                TaskRow(
+                    id=1,
+                    title="Done one",
+                    priority=3,
+                    is_done=True,
+                    tags=["private"],
+                    title_normalized="done one",
+                ),
+                TaskRow(
+                    id=2,
+                    title="Open one",
+                    priority=2,
+                    tags=["internal"],
+                    title_normalized="open one",
+                ),
+                TaskRow(
+                    id=3,
+                    title="Done two",
+                    priority=5,
+                    is_done=True,
+                    tags=["private"],
+                    title_normalized="done two",
+                ),
+            ]
+        )
+        session.commit()
+
+    previous_factory = getattr(app.state, "session_factory", None)
+    had_factory = hasattr(app.state, "session_factory")
+    previous_overrides = app.dependency_overrides.copy()
+
+    def get_sql_planner(db=Depends(get_db)):
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
+
+    app.state.session_factory = session_factory
+    app.dependency_overrides[get_planner] = get_sql_planner
+    try:
+        default_list = api_client.get("/tasks")
+        selected = api_client.get(
+            "/tasks", params={"is_done": False, "sort_desc": True, "limit": 1}
+        )
+        invalid_limit = api_client.get("/tasks", params={"limit": 0})
+        invalid_status = api_client.get("/tasks", params={"is_done": "maybe"})
+        initial_stats = api_client.get("/stats")
+        created = api_client.post(
+            "/tasks", json={"title": "SQL-created", "priority": 2}
+        )
+        created_stats = api_client.get("/stats")
+        with session_factory() as session:
+            planner = build_service(
+                repository=SqlTaskRepository(session),
+                write_scope=session.begin,
+            )
+            planner.mark_done(created.json()["id"])
+        done_stats = api_client.get("/stats")
+        deleted = api_client.delete("/tasks/1")
+        deleted_stats = api_client.get("/stats")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        if had_factory:
+            app.state.session_factory = previous_factory
+        else:
+            del app.state.session_factory
+
+    assert default_list.status_code == 200
+    assert [task["id"] for task in default_list.json()] == [1, 2, 3]
+    assert "tags" not in default_list.json()[0]
+    assert selected.status_code == 200
+    assert [task["id"] for task in selected.json()] == [2]
+    assert invalid_limit.status_code == invalid_status.status_code == 422
+    assert initial_stats.json() == {"total": 3, "open": 1, "done": 2}
+    assert created.status_code == 201
+    assert created_stats.json() == {"total": 4, "open": 2, "done": 2}
+    assert done_stats.json() == {"total": 4, "open": 1, "done": 3}
+    assert deleted.status_code == 204
+    assert deleted_stats.json() == {"total": 3, "open": 1, "done": 2}
+
+    with session_factory() as session:
+        assert session.get(TaskRow, 1) is None
+        created_row = session.get(TaskRow, created.json()["id"])
+        assert created_row.is_done is True
+        assert session.get(TaskRow, 2).is_done is False
+
+    json_task = api_service.add_task("JSON remains active", 2)
+    json_list = api_client.get("/tasks")
+    json_stats = api_client.get("/stats")
+    assert [task["id"] for task in json_list.json()] == [json_task.id]
+    assert json_stats.json() == {"total": 1, "open": 1, "done": 0}

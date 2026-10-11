@@ -1,4 +1,6 @@
-from sqlalchemy import select
+from __future__ import annotations
+
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.DBase.models import TaskRow, task_from_row
@@ -13,6 +15,33 @@ class SqlTaskRepository:
         statement = select(TaskRow).order_by(TaskRow.id)
         rows = self.session.scalars(statement).all()
         return [task_from_row(row) for row in rows]
+
+    def select(
+        self,
+        is_done: bool | None = None,
+        sort_desc: bool = False,
+        limit: int | None = None,
+    ) -> list[Task]:
+        statement = select(TaskRow)
+        if is_done is not None:
+            statement = statement.where(TaskRow.is_done == is_done)
+
+        ordering = TaskRow.id.desc() if sort_desc else TaskRow.id.asc()
+        statement = statement.order_by(ordering)
+        if limit is not None:
+            statement = statement.limit(limit)
+
+        rows = self.session.scalars(statement).all()
+        return [task_from_row(row) for row in rows]
+
+    def statistics(self) -> dict[str, int]:
+        statement = select(
+            func.count(TaskRow.id),
+            func.count(case((TaskRow.is_done.is_(False), TaskRow.id))),
+            func.count(case((TaskRow.is_done.is_(True), TaskRow.id))),
+        )
+        total, opened, done = self.session.execute(statement).one()
+        return {"all": total, "open": opened, "done": done}
 
     def get(self, task_id: int) -> Task | None:
         row = self.session.get(TaskRow, task_id)
