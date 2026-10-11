@@ -32,6 +32,11 @@ def build_service(
 
 
 @contextmanager
+def json_service_context(settings) -> Iterator[PlannerService]:
+    yield build_service(settings=settings)
+
+
+@contextmanager
 def sql_service_context(session_factory) -> Iterator[PlannerService]:
     with session_factory() as db:
         yield build_service(
@@ -43,7 +48,7 @@ def sql_service_context(session_factory) -> Iterator[PlannerService]:
 def main():
     settings = load_settings()
     try:
-        return run(build_service(settings=settings))
+        return run(lambda: json_service_context(settings))
     except StorageError as error:
         print(f"Planner остановлен: {error}")
 

@@ -149,7 +149,7 @@ COMMAND_HANDLERS = {
 }
 
 
-def execute_command(service, command, read=input, write=print):
+def execute_command(service_context, command, read=input, write=print):
     normalized = command.strip().lower()
     if normalized == "exit":
         write("Работу завершили")
@@ -160,14 +160,14 @@ def execute_command(service, command, read=input, write=print):
         write("Неизвестная команда")
         return True
 
-    handler(service, read=read, write=write)
+    with service_context() as service:
+        handler(service, read=read, write=write)
     return True
 
 
-def run(service, read=input, write=print):
+def run(service_context, read=input, write=print):
     while True:
         show_menu(write)
         command = read("Команда: ")
-        if not execute_command(service, command, read=read, write=write):
+        if not execute_command(service_context, command, read=read, write=write):
             break
-    return service

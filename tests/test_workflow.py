@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 from app.cli import run
 
 
@@ -121,7 +123,11 @@ def test_api_create_cli_done_and_api_read_share_the_same_json_state(
 
     commands = iter(("done", str(task_id), "exit"))
     output = []
-    run(api_service, read=lambda _prompt: next(commands), write=output.append)
+    run(
+        lambda: nullcontext(api_service),
+        read=lambda _prompt: next(commands),
+        write=output.append,
+    )
 
     assert any(f"Задача {task_id} выполнена" in line for line in output)
     assert api_client.get(f"/tasks/{task_id}").json() == {

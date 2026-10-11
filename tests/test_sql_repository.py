@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 import pytest
 from fastapi import Depends
 from sqlalchemy import URL, event, select
@@ -5,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import app
+from app.cli import run
 from app.core.dependencies import get_db, get_planner
 from app.errors import TaskNotFoundError
 from app.DBase.engine import make_engine
@@ -1219,4 +1222,68 @@ def test_sql_search_tracks_title_through_create_put_and_patch(
     assert created.status_code == 201
     assert replaced.status_code == patched.status_code == 200
     json_task = api_service.add_task("JSON default поиск", 1)
-    assert [task.id for task in api_service.search_tasks("ПОИСК")] == [json_task.id]
+    assert [task.id for task in api_service.search_tasks("ПОИСК")] == [
+        json_task.id
+    ]
+
+
+def test_cli_sql_workflow_uses_one_closed_session_per_command(
+    sql_database,
+):
+    engine, _session_factory = sql_database
+    created_sessions = []
+
+    class TrackedSession(Session):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.was_closed = False
+            created_sessions.append(self)
+
+        def close(self):
+            self.was_closed = True
+            super().close()
+
+    tracked_factory = sessionmaker(bind=engine, class_=TrackedSession)
+    entered = []
+    exited = []
+
+    @contextmanager
+    def tracked_context():
+        entered.append(len(entered) + 1)
+        try:
+            with sql_service_context(tracked_factory) as planner:
+                yield planner
+        finally:
+            exited.append(len(exited) + 1)
+
+    commands = iter(
+        (
+            "add", "CLI SQL task", "3",
+            "list",
+            "find", "1",
+            "done", "1",
+            "stats",
+            "search", "SQL",
+            "delete", "1",
+            "unknown",
+            "exit",
+        )
+    )
+    output = []
+    result = run(
+        tracked_context,
+        read=lambda _prompt: next(commands),
+        write=output.append,
+    )
+
+    assert result is None
+    assert entered == exited == list(range(1, 8))
+    assert len(created_sessions) == 7
+    assert all(session.was_closed for session in created_sessions)
+    assert any("CLI SQL task" in line for line in output)
+    assert any("Задача 1 выполнена" in line for line in output)
+    assert any("Всего: 1" in line for line in output)
+    assert any("неизвест" in line.casefold() for line in output)
+    with _session_factory() as session:
+        assert session.get(TaskRow, 1) is None
+        assert session.scalars(select(TaskRow)).all() == []

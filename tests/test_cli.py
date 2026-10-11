@@ -1,3 +1,4 @@
+from contextlib import contextmanager, nullcontext
 import subprocess
 import sys
 
@@ -5,7 +6,7 @@ import pytest
 
 from app import main as main_module
 from app.core import config as config_module
-from app.cli import execute_command
+from app.cli import execute_command, run
 from app.errors import StorageError
 from app.main import build_service
 from app.models import Task
@@ -58,7 +59,7 @@ def run_command(storage, command, answers=()):
     messages = []
     service = PlannerService(storage)
     keep_running = execute_command(
-        service,
+        lambda: nullcontext(service),
         command,
         read=make_reader(answers),
         write=messages.append,
@@ -138,13 +139,13 @@ def test_invalid_input_unknown_id_and_repeated_done_do_not_save():
     messages = []
 
     execute_command(
-        service,
+        lambda: nullcontext(service),
         "find",
         read=make_reader(["not-an-int", "999"]),
         write=messages.append,
     )
     execute_command(
-        service,
+        lambda: nullcontext(service),
         "done",
         read=make_reader(["1"]),
         write=messages.append,
@@ -170,7 +171,7 @@ def test_storage_error_propagates_without_success_message(fail_on, command, answ
 
     with pytest.raises(StorageError):
         execute_command(
-            service,
+            lambda: nullcontext(service),
             command,
             read=make_reader(answers),
             write=messages.append,
@@ -212,3 +213,61 @@ def test_import_main_does_not_start_cli():
 
     assert result.stdout == ""
     assert result.stderr == ""
+
+
+def test_cli_opens_context_only_for_known_commands_and_closes_on_error():
+    opened = []
+    closed = []
+
+    @contextmanager
+    def service_scope():
+        opened.append(True)
+        try:
+            class BrokenService:
+                def list_tasks(self):
+                    raise RuntimeError("service failed")
+
+            yield BrokenService()
+        finally:
+            closed.append(True)
+
+    messages = []
+    assert execute_command(service_scope, " unknown ", write=messages.append)
+    assert not execute_command(service_scope, " EXIT ", write=messages.append)
+    assert opened == closed == []
+    assert any("неизвест" in message.casefold() for message in messages)
+
+    with pytest.raises(RuntimeError, match="service failed"):
+        execute_command(service_scope, "list", write=messages.append)
+    assert opened == closed == [True]
+    assert not any("Список задач" in message for message in messages)
+
+
+def test_cli_run_uses_a_fresh_context_for_each_recognized_command():
+    storage = ObservedStorage(MemoryStorage([Task(1, "Python", 3)]))
+    service = PlannerService(storage)
+    contexts = []
+    finalized = []
+    answers = iter(("list", "stats", "unknown", "exit"))
+    messages = []
+
+    @contextmanager
+    def service_scope():
+        context_id = len(contexts) + 1
+        contexts.append(context_id)
+        try:
+            yield service
+        finally:
+            finalized.append(context_id)
+
+    result = run(
+        service_scope,
+        read=lambda _prompt: next(answers),
+        write=messages.append,
+    )
+
+    assert result is None
+    assert contexts == finalized == [1, 2]
+    assert any("Python" in message for message in messages)
+    assert any("Всего: 1" in message for message in messages)
+    assert any("неизвест" in message.casefold() for message in messages)

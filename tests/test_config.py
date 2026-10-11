@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -291,7 +292,7 @@ def test_api_and_cli_share_loaded_settings_and_json(
         messages = []
         cli_service = main_module.build_service(settings=settings)
         execute_command(
-            cli_service,
+            lambda: nullcontext(cli_service),
             "list",
             read=lambda _prompt: "",
             write=messages.append,

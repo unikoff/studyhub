@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -212,7 +214,11 @@ def test_cookie_preferences_are_client_local_and_do_not_change_planner(
 
     commands = iter(("list", "stats", "exit"))
     output = []
-    run(api_service, read=lambda _prompt: next(commands), write=output.append)
+    run(
+        lambda: nullcontext(api_service),
+        read=lambda _prompt: next(commands),
+        write=output.append,
+    )
     rendered = "\n".join(output)
     assert "Keep preference isolated" in rendered
     assert "Всего: 1" in rendered
