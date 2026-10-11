@@ -13,6 +13,7 @@
 | Сборка делает IO или импорт запускает меню | CLI boundary | `tests/test_cli.py` | Переданный storage не вызывается при сборке; default выбирает JsonStorage; subprocess import без вывода |
 | HTTP API contract | Integration | `tests/test_api.py` | Маршруты, публичная схема, ошибки 404/422, PUT/PATCH и DELETE проверяются через ASGI без рабочей JSON-базы |
 | Несогласованность операций в одном жизненном цикле задачи | Workflow integration | `tests/test_workflow.py` | Создание, чтение, PUT/PATCH, отказ, удаление и stats проходят через один TestClient и изолированный JsonStorage |
+| SQL readiness rehearsal между интерфейсами | Workflow integration | `tests/test_sql_repository.py::test_readiness_rehearsal_imports_copy_and_shares_sql_between_api_and_cli` | Копия JSON импортируется в пустую временную SQLite; API и CLI используют её через отдельные закрытые Session, а независимое чтение подтверждает общее состояние |
 
 `tests/conftest.py` предоставляет каждому тесту новые Task, MemoryStorage и `PlannerService` по умолчанию. Параметризованные случаи проверяют варианты одного правила; файловые сценарии используют отдельные пути `tmp_path`. Пользовательский `data/tasks.json` не является фикстурой.
 

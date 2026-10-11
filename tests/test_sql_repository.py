@@ -1,4 +1,7 @@
 from contextlib import contextmanager
+import json
+from pathlib import Path
+import shutil
 
 import pytest
 from fastapi import Depends
@@ -12,6 +15,7 @@ from app.core.dependencies import get_db, get_planner
 from app.errors import TaskNotFoundError
 from app.DBase.engine import make_engine
 from app.DBase.init_db import initialize_database
+from app.DBase.import_tasks import import_snapshot
 from app.DBase.models import TaskRow
 from app.DBase.session import make_session_factory
 from app.core.config import Settings
@@ -1287,3 +1291,133 @@ def test_cli_sql_workflow_uses_one_closed_session_per_command(
     with _session_factory() as session:
         assert session.get(TaskRow, 1) is None
         assert session.scalars(select(TaskRow)).all() == []
+
+def test_readiness_rehearsal_imports_copy_and_shares_sql_between_api_and_cli(
+    sql_database, tmp_path, api_client, api_service
+):
+    engine, _session_factory = sql_database
+    source_path = Path(__file__).resolve().parents[1] / "data" / "tasks.json"
+    source_before = source_path.read_bytes()
+    copied_snapshot = tmp_path / "snapshot-copy.json"
+    shutil.copyfile(source_path, copied_snapshot)
+    snapshot_before = copied_snapshot.read_bytes()
+    source_records = json.loads(snapshot_before.decode("utf-8"))
+    expected_rows = {
+        record["id"]: (
+            record["title"],
+            record["priority"],
+            record["is_done"],
+            record.get("tags", []),
+            record["title"].lower(),
+        )
+        for record in source_records
+    }
+
+    database_url = engine.url.render_as_string(hide_password=False)
+    assert import_snapshot(copied_snapshot, database_url) == len(source_records)
+    with _session_factory() as session:
+        imported_rows = session.scalars(
+            select(TaskRow).order_by(TaskRow.id)
+        ).all()
+        actual_rows = {
+            row.id: (
+                row.title,
+                row.priority,
+                row.is_done,
+                row.tags,
+                row.title_normalized,
+            )
+            for row in imported_rows
+        }
+    assert actual_rows == expected_rows
+
+    created_sessions = []
+
+    class TrackedSession(Session):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.was_closed = False
+            created_sessions.append(self)
+
+        def close(self):
+            self.was_closed = True
+            super().close()
+
+    tracked_factory = sessionmaker(bind=engine, class_=TrackedSession)
+    previous_factory = getattr(app.state, "session_factory", None)
+    had_factory = hasattr(app.state, "session_factory")
+    previous_overrides = app.dependency_overrides.copy()
+
+    def get_sql_planner(db=Depends(get_db)):
+        return build_service(
+            repository=SqlTaskRepository(db),
+            write_scope=db.begin,
+        )
+
+    app.state.session_factory = tracked_factory
+    app.dependency_overrides[get_planner] = get_sql_planner
+    output = []
+    target = next(record for record in source_records if not record["is_done"])
+    try:
+        created = api_client.post(
+            "/tasks", json={"title": "Приёмка блок 15", "priority": 3}
+        )
+        task_id = created.json()["id"]
+        commands = iter(("find", str(task_id), "done", str(task_id), "stats", "exit"))
+        run(
+            lambda: sql_service_context(tracked_factory),
+            read=lambda _prompt: next(commands),
+            write=output.append,
+        )
+        fetched = api_client.get(f"/tasks/{task_id}")
+        statistics = api_client.get("/stats")
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous_overrides)
+        if had_factory:
+            app.state.session_factory = previous_factory
+        else:
+            del app.state.session_factory
+
+    assert created.status_code == 201
+    assert created.json() == {
+        "id": task_id,
+        "title": "Приёмка блок 15",
+        "priority": 3,
+        "is_done": False,
+    }
+    assert fetched.status_code == 200
+    assert fetched.json() == {
+        "id": task_id,
+        "title": "Приёмка блок 15",
+        "priority": 3,
+        "is_done": True,
+    }
+    assert statistics.json() == {
+        "total": len(source_records) + 1,
+        "open": sum(not item["is_done"] for item in source_records),
+        "done": sum(item["is_done"] for item in source_records) + 1,
+    }
+    assert any(f"[{task_id}] Приёмка блок 15" in line for line in output)
+    assert any(f"Задача {task_id} выполнена" in line for line in output)
+    assert all(session.was_closed for session in created_sessions)
+    assert len(created_sessions) == 6
+
+    with _session_factory() as session:
+        completed_row = session.get(TaskRow, task_id)
+        unchanged_row = session.get(TaskRow, target["id"])
+        assert completed_row.is_done is True
+        assert completed_row.title_normalized == "приёмка блок 15"
+        assert unchanged_row is not None
+        assert (
+            unchanged_row.title,
+            unchanged_row.priority,
+            unchanged_row.is_done,
+            unchanged_row.tags,
+            unchanged_row.title_normalized,
+        ) == expected_rows[target["id"]]
+        assert session.get(TaskRow, task_id - 1) is not None
+
+    assert source_path.read_bytes() == source_before
+    assert copied_snapshot.read_bytes() == snapshot_before
+    assert not api_service.storage.path.exists()
